@@ -15,11 +15,7 @@ import {
     NodeTypeID,
     NodeTypeUtils,
     NodeID
-} from "../../State.sol";
-
-import {Account} from "../../../Account.sol";
-import {Accounts} from "../../../Accounts.sol";
-import {StateGraph} from "../../StateGraph.sol";
+} from "cog/State.sol";
 import {
     Action,
     ActionType,
@@ -28,7 +24,9 @@ import {
     ActionArgKind,
     Rule,
     BaseDispatcher
-} from "../../Dispatcher.sol";
+} from "cog/Dispatcher.sol";
+
+import {StateGraph} from "cog/StateGraph.sol";
 
 // ----------------------------------
 // define some actions
@@ -410,7 +408,7 @@ contract SpawnSeekerRule is Rule {
                 HAS_OWNER.ID(),
                 id,
                 EdgeData({
-                    nodeID: action.owner.ID(),
+                    nodeID: NodeTypeUtils.ID( NodeType(action.owner), 0, 0),
                     weight: 0
                 })
             );
@@ -899,12 +897,9 @@ contract CornSeekers is BaseDispatcher {
     }
 
     function dispatchSomeStuff() public {
-        // some temp testing junk....
-        Accounts accounts = new Accounts();
-        Account alice = accounts.signup(0xD173aeD60711bDF4AE1bDbA6ec59aACd0ecBb028);
         // reset map
         dispatch(Action({
-            owner: alice,
+            owner: msg.sender,
             id: address(RESET_MAP),
             args: "",
             block: block.number
@@ -912,7 +907,7 @@ contract CornSeekers is BaseDispatcher {
 
         // spawn a blokey
         dispatch(Action({
-            owner: alice,
+            owner: msg.sender,
             id: address(SPAWN_SEEKER),
             args: abi.encode(
                 uint32(1),
@@ -925,7 +920,7 @@ contract CornSeekers is BaseDispatcher {
 
         // move the blokey
         dispatch(Action({
-            owner: alice,
+            owner: msg.sender,
             id: address(MOVE_SEEKER),
             args: abi.encode(
                 uint32(1),
