@@ -9,26 +9,22 @@ import {
     EdgeType,
     EdgeData,
     NodeTypeUtils,
-    EdgeTypeUtils,
     NodeIDUtils,
     NodeID
 } from "cog/State.sol";
 import {
     Action,
-    Rule,
-    ActionTypeDef
+    Rule
 } from "cog/Dispatcher.sol";
 import {StateGraph} from "cog/StateGraph.sol";
 
 import {
+    Actions,
     CornSeekers,
-    MoveSeeker,
-    SpawnSeeker,
-    ResetMap,
+    Direction,
     Seeker,
     Resource,
     Tile,
-    RevealSeed,
     ResetRule,
     SpawnSeekerRule,
     MovementRule,
@@ -41,124 +37,28 @@ import {
     ProvidesEntropyTo
 } from "../src/CornSeekers.sol";
 
-using EdgeTypeUtils for EdgeType;
-
 contract CornSeekersTest is Test {
 
-    State internal g;
     CornSeekers internal game;
-
-    // actions
-    ResetMap internal RESET_MAP;
-    RevealSeed internal REVEAL_SEED;
-    MoveSeeker internal MOVE_SEEKER;
-    SpawnSeeker internal SPAWN_SEEKER;
-
-    // nodes
-    Seeker internal SEEKER;
-    Seed internal SEED;
-    Tile internal TILE;
-    Resource internal RESOURCE;
-
-    // edges
-    EdgeType internal PROVIDES_ENTROPY_TO;
-    EdgeType internal HAS_OWNER;
-    EdgeType internal HAS_LOCATION;
-    EdgeType internal HAS_RESOURCE;
-
-    // rules
-    ResetRule internal RESET_RULE;
-    MovementRule internal MOVEMENT_RULE;
+    State internal g;
 
     // accounts
     address aliceAccount;
 
     function setUp() public {
-
-        // setup actions
-        RESET_MAP = new ResetMap();
-        REVEAL_SEED = new RevealSeed();
-        MOVE_SEEKER = new MoveSeeker();
-        SPAWN_SEEKER = new SpawnSeeker();
-
-        // setup nodes
-        SEEKER = new Seeker();
-        SEED = new Seed();
-        TILE = new Tile();
-        RESOURCE = new Resource();
-
-        // setup edges
-        PROVIDES_ENTROPY_TO = new ProvidesEntropyTo();
-        HAS_OWNER = new HasOwner();
-        HAS_LOCATION = new HasLocation();
-        HAS_OWNER = new HasOwner();
-        HAS_RESOURCE = new HasResource();
-
-        // setup rules
-        Rule[] memory rules = new Rule[](5);
-        rules[0] = new ResetRule(
-            Tile(address(TILE)),
-            ResetMap(address(RESET_MAP))
-        );
-        rules[1] = new SpawnSeekerRule(
-            Seeker(address(SEEKER)),
-            Tile(address(TILE)),
-            HasLocation(address(HAS_LOCATION)),
-            HasOwner(address(HAS_OWNER)),
-            SpawnSeeker(address(SPAWN_SEEKER))
-        );
-        rules[2] = new MovementRule(
-            Seeker(address(SEEKER)),
-            Tile(address(TILE)),
-            HasLocation(address(HAS_LOCATION)),
-            MoveSeeker(address(MOVE_SEEKER))
-        );
-        rules[3] = new ScoutingRule(
-            Seeker(address(SEEKER)),
-            Seed(address(SEED)),
-            Tile(address(TILE)),
-            HasLocation(address(HAS_LOCATION)),
-            RevealSeed(address(REVEAL_SEED)),
-            SpawnSeeker(address(SPAWN_SEEKER)),
-            MoveSeeker(address(MOVE_SEEKER)),
-            ProvidesEntropyTo(address(PROVIDES_ENTROPY_TO))
-        );
-        rules[4] = new HarvestRule(
-            Seeker(address(SEEKER)),
-            Tile(address(TILE)),
-            Resource(address(RESOURCE)),
-            HasLocation(address(HAS_LOCATION)),
-            HasResource(address(HAS_RESOURCE)),
-            MoveSeeker(address(MOVE_SEEKER))
-        );
-
-        // setup state
-        g = new StateGraph();
-
         // setup game
-        game = new CornSeekers(g, rules);
+        game = new CornSeekers();
+
+        // fetch the State to play with
+        g = game.getState();
 
         // setup users
         uint256 alicePrivateKey = 0xA11CE;
         aliceAccount = vm.addr(alicePrivateKey);
 
         // reset map before all tests
-        Action memory reset = Action({
-            owner: aliceAccount,
-            id: address(RESET_MAP),
-            args: "",
-            block: block.number
-        });
-        console.log("RESET_MAP start");
-        game.dispatch(reset);
-        console.log("RESET_MAP done");
-    }
-
-    function testGetActionID() public {
-        address id = game.getActionID("RESET_MAP");
-        assertEq(
-            id,
-            address(RESET_MAP)
+        game.getDispatcher().dispatch(
+            abi.encodeCall(Actions.RESET_MAP, ())
         );
     }
 
@@ -167,67 +67,60 @@ contract CornSeekersTest is Test {
         // this converts the tile to a GRASS tile and increases
         // the HAS_RESOURCE balance on the seeker
 
+        // dispatch as alice
+        vm.startPrank(aliceAccount);
+
         // spawn a seeker bottom left corner of map
-        Action memory spawnSeeker = Action({
-            owner: aliceAccount,
-            id: address(SPAWN_SEEKER),
-            args: abi.encode(
-                uint32(1),
-                uint8(0),  // x
-                uint8(0),  // y
-                uint8(100) // str
-            ),
-            block: block.number
-        });
-        console.log("SPAWN_SEEKER start");
-        game.dispatch(spawnSeeker);
-        console.log("SPAWN_SEEKER end");
+        game.getDispatcher().dispatch(
+            abi.encodeCall(Actions.SPAWN_SEEKER, (
+                1,   // seeker id (sid)
+                0,   // x
+                0,   // y
+                100  // strength attr
+            ))
+        );
 
         // comfirm seeker is at tile (0,0)
         assertNodeEq(
-            g.getEdge(HAS_LOCATION.ID(), SEEKER.ID(1)).nodeID,
-            TILE.ID(0,0)
+            g.getEdge( game.HAS_LOCATION(), game.SEEKER().ID(1)).nodeID,
+            game.TILE().ID(0,0)
         );
 
         // confirm our current corn balance is 0
         assertEq(
-            g.getEdge(HAS_RESOURCE.ID(), SEEKER.ID(1)).weight,
+            g.getEdge(game.HAS_RESOURCE(), game.SEEKER().ID(1)).weight,
             0
         );
 
         // hack in CORN at tile (1,1) to bypass scouting
-        TILE.setAttributeValues(
+        game.TILE().setAttributeValues(
             g,
-            TILE.ID(1,1),
+            game.TILE().ID(1,1),
             Tile.Contents.CORN
         );
 
         // move the seeker NORTHEAST to tile (1,1)
-        Action memory moveSeeker = Action({
-            owner: aliceAccount,
-            id: address(MOVE_SEEKER),
-            args: MOVE_SEEKER.encode(
-                SEEKER.ID(1),
-                MoveSeeker.Direction.NORTHEAST
-            ),
-            block: block.number
-        });
-        console.log("MOVE_SEEKER start");
-        game.dispatch(moveSeeker);
-        console.log("MOVE_SEEKER end");
+        game.getDispatcher().dispatch(
+            abi.encodeCall(Actions.MOVE_SEEKER, (
+                1,                   // seeker id (sid)
+                Direction.NORTHEAST  // direction to move
+            ))
+        );
 
         // comfirm seeker is now at tile (1,1)
         assertNodeEq(
-            g.getEdge(HAS_LOCATION.ID(), SEEKER.ID(1)).nodeID,
-            TILE.ID(1,1)
+            g.getEdge(game.HAS_LOCATION(), game.SEEKER().ID(1)).nodeID,
+            game.TILE().ID(1,1)
         );
 
         // confirm our corn balance is now 1
         assertEq(
-            g.getEdge(HAS_RESOURCE.ID(), SEEKER.ID(1)).weight,
+            g.getEdge(game.HAS_RESOURCE(), game.SEEKER().ID(1)).weight,
             1
         );
 
+        // stop being alice
+        vm.stopPrank();
     }
 
     function testScouting() public {
@@ -244,24 +137,21 @@ contract CornSeekersTest is Test {
         // entopy and perform any followup processing
         //
 
+        // dispatch as alice
+        vm.startPrank(aliceAccount);
+
         // spawn a seeker bottom left corner of map
-        Action memory spawnSeeker = Action({
-            owner: aliceAccount,
-            id: address(SPAWN_SEEKER),
-            args: abi.encode(
-                uint32(1),
-                uint8(0),  // x
-                uint8(0),  // y
-                uint8(100) // str
-            ),
-            block: block.number
-        });
-        console.log("SPAWN_SEEKER start");
-        game.dispatch(spawnSeeker);
-        console.log("SPAWN_SEEKER end");
+        game.getDispatcher().dispatch(
+            abi.encodeCall(Actions.SPAWN_SEEKER, (
+                1,   // seeker id (sid)
+                0,   // x
+                0,   // y
+                100  // strength attr
+            ))
+        );
 
         // there should be a seeker with a strength value
-        uint8 str = SEEKER.getAttributeValues(g, SEEKER.ID(1));
+        uint8 str = game.SEEKER().getAttributeValues(g, game.SEEKER().ID(1));
         assertEq(
             str,
             100
@@ -269,8 +159,8 @@ contract CornSeekersTest is Test {
 
         // the seeker should have location
         assertNodeEq(
-            g.getEdge(HAS_LOCATION.ID(), SEEKER.ID(1)).nodeID,
-            TILE.ID(0,0)
+            g.getEdge(game.HAS_LOCATION(), game.SEEKER().ID(1)).nodeID,
+            game.TILE().ID(0,0)
         );
 
         // there should now be 1 PROVIDES_ENTROPY_TO edges
@@ -278,13 +168,13 @@ contract CornSeekersTest is Test {
         // and since we start in a corner, so there shoiuld be
         // 1 UNDISCOVERED adjancent tile
         EdgeData[] memory pendingTiles = g.getEdges(
-            PROVIDES_ENTROPY_TO.ID(),
-            SEED.ID(uint32(block.number))
+            game.PROVIDES_ENTROPY_TO(),
+            game.SEED().ID(uint32(block.number))
         );
         assertEq(pendingTiles.length, 1);
 
         // the pending tile should be UNDISCOVERED
-        (Tile.Contents pendingContent,,) = TILE.getAttributeValues(
+        (Tile.Contents pendingContent,,) = game.TILE().getAttributeValues(
             g,
             pendingTiles[0].nodeID
         );
@@ -299,21 +189,15 @@ contract CornSeekersTest is Test {
         // once we know the blockhash of the requested
         // seed, we can submit REVEAL_SEED action
         // to resolve it
-        Action memory reveal1 = Action({
-            owner: aliceAccount,
-            id: address(REVEAL_SEED),
-            args: REVEAL_SEED.encode(
-                SEED.ID(uint32(block.number - 1)),
+        game.getDispatcher().dispatch(
+            abi.encodeCall(Actions.REVEAL_SEED, (
+                game.SEED().ID(uint32(block.number - 1)),
                 uint32(uint(blockhash(block.number-1)))
-            ),
-            block: block.number
-        });
-        console.log("REVEAL_SEED1 start");
-        game.dispatch(reveal1);
-        console.log("REVEAL_SEED1 end");
+            ))
+        );
 
         // The pendingTile should now be discovered
-        (Tile.Contents discoveredContent,,) = TILE.getAttributeValues(
+        (Tile.Contents discoveredContent,,) = game.TILE().getAttributeValues(
             g,
             pendingTiles[0].nodeID
         );
@@ -323,29 +207,23 @@ contract CornSeekersTest is Test {
         );
 
         // move the seeker NORTHEAST
-        Action memory moveSeeker = Action({
-            owner: aliceAccount,
-            id: address(MOVE_SEEKER),
-            args: MOVE_SEEKER.encode(
-                SEEKER.ID(1),
-                MoveSeeker.Direction.NORTHEAST
-            ),
-            block: block.number
-        });
-        console.log("MOVE_SEEKER1 start");
-        game.dispatch(moveSeeker);
-        console.log("MOVE_SEEKER1 end");
+        game.getDispatcher().dispatch(
+            abi.encodeCall(Actions.MOVE_SEEKER, (
+                1,                   // seeker id (sid)
+                Direction.NORTHEAST  // direction to move
+            ))
+        );
 
         // seeker should now have location at 1,1
         assertNodeEq(
-            g.getEdge(HAS_LOCATION.ID(), SEEKER.ID(1)).nodeID,
-            TILE.ID(1,1)
+            g.getEdge(game.HAS_LOCATION(), game.SEEKER().ID(1)).nodeID,
+            game.TILE().ID(1,1)
         );
 
         // there should be three pending tiles now at (1,2) (2,2) (2,1)
         pendingTiles = g.getEdges(
-            PROVIDES_ENTROPY_TO.ID(),
-            SEED.ID(uint32(block.number))
+            game.PROVIDES_ENTROPY_TO(),
+            game.SEED().ID(uint32(block.number))
         );
         assertEq(pendingTiles.length, 3);
 
@@ -353,34 +231,31 @@ contract CornSeekersTest is Test {
         // a noop as the tile at (2,2) is UNDISCOVERED so it is
         // an illegal move. We don't error on such moves, we just
         // ignore them.
-        console.log("MOVE_SEEKER2 start");
-        game.dispatch(moveSeeker);
-        console.log("MOVE_SEEKER2 end");
+        game.getDispatcher().dispatch(
+            abi.encodeCall(Actions.MOVE_SEEKER, (
+                1,                   // seeker id (sid)
+                Direction.NORTHEAST  // direction to move
+            ))
+        );
         assertNodeEq(
-            g.getEdge(HAS_LOCATION.ID(), SEEKER.ID(1)).nodeID,
-            TILE.ID(1,1)
+            g.getEdge(game.HAS_LOCATION(), game.SEEKER().ID(1)).nodeID,
+            game.TILE().ID(1,1)
         );
 
         // roll time forward
         vm.roll(block.number + 1);
 
         // submit the reveal action
-        Action memory reveal2 = Action({
-            owner: aliceAccount,
-            id: address(REVEAL_SEED),
-            args: REVEAL_SEED.encode(
-                SEED.ID(uint32(block.number - 1)),
+        game.getDispatcher().dispatch(
+            abi.encodeCall(Actions.REVEAL_SEED, (
+                game.SEED().ID(uint32(block.number - 1)),
                 uint32(uint(blockhash(block.number-1)))
-            ),
-            block: block.number
-        });
-        console.log("REVEAL_SEED2 start");
-        game.dispatch(reveal2);
-        console.log("REVEAL_SEED2 end");
+            ))
+        );
 
         // the tiles should now all be revealed
         for (uint i=0; i<pendingTiles.length; i++) {
-            (pendingContent,,) = TILE.getAttributeValues(
+            (pendingContent,,) = game.TILE().getAttributeValues(
                 g,
                 pendingTiles[i].nodeID
             );
@@ -390,8 +265,9 @@ contract CornSeekersTest is Test {
             );
         }
 
-        console.log("done");
 
+        // stop being alice
+        vm.stopPrank();
     }
 
     function assertNodeEq(NodeID a, NodeID b) internal {

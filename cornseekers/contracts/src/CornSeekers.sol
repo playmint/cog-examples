@@ -8,108 +8,48 @@ import {
     NodeData,
     EdgeType,
     EdgeData,
-    EdgeTypeID,
-    EdgeTypeUtils,
     NodeType,
     NodeIDUtils,
-    NodeTypeID,
     NodeTypeUtils,
     NodeID
 } from "cog/State.sol";
 import {
     Action,
-    ActionType,
-    ActionTypeDef,
-    ActionArgDef,
-    ActionArgKind,
+    Context,
     Rule,
     BaseDispatcher
 } from "cog/Dispatcher.sol";
+import {
+    Game,
+    BasicGame
+} from "cog/Game.sol";
 
 import {StateGraph} from "cog/StateGraph.sol";
+
+// ----------------------------------
+// define some constants/enums
+// ----------------------------------
+
+enum Direction {
+    NORTH,
+    NORTHEAST,
+    EAST,
+    SOUTHEAST,
+    SOUTH,
+    SOUTHWEST,
+    WEST,
+    NORTHWEST
+}
 
 // ----------------------------------
 // define some actions
 // ----------------------------------
 
-contract ResetMap is ActionType {
-    function getTypeDef() external view returns (ActionTypeDef memory def) {
-        def.name = "RESET_MAP";
-        def.id = address(this);
-    }
-}
-
-contract RevealSeed is ActionType {
-    function encode(NodeID seedID, uint32 entropy) public pure returns (bytes memory) {
-        return abi.encode(seedID, entropy);
-    }
-    function decode(bytes memory args) public pure returns (NodeID id, uint32 entropy) {
-        return abi.decode(args, (NodeID, uint32));
-    }
-    function getTypeDef() external view returns (ActionTypeDef memory def) {
-        def.name = "REVEAL_SEED";
-        def.id = address(this);
-        def.arg0.name = "seekerID";
-        def.arg0.kind = ActionArgKind.NODEID;
-        def.arg0.required = true;
-        def.arg1.name = "entropy";
-        def.arg1.required = true;
-        def.arg1.kind = ActionArgKind.UINT32;
-    }
-}
-
-contract SpawnSeeker is ActionType {
-    function encode(uint32 sid, uint8 x, uint8 y, uint8 strength) public pure returns (bytes memory) {
-        return abi.encode( sid, x, y, strength);
-    }
-    function decode(bytes memory args) public pure returns (uint32 id, uint8 x, uint8 y, uint8 strength) {
-        return abi.decode(args, (uint32, uint8, uint8, uint8));
-    }
-    function getTypeDef() external view returns (ActionTypeDef memory def) {
-        def.name = "SPAWN_SEEKER";
-        def.id = address(this);
-        def.arg0.name = "seekerID";
-        def.arg0.required = true;
-        def.arg0.kind = ActionArgKind.NODEID;
-        def.arg1.name = "x";
-        def.arg1.required = true;
-        def.arg1.kind = ActionArgKind.UINT8;
-        def.arg2.name = "y";
-        def.arg2.required = true;
-        def.arg2.kind = ActionArgKind.UINT8;
-        def.arg3.name = "strength";
-        def.arg3.required = true;
-        def.arg3.kind = ActionArgKind.UINT8;
-    }
-}
-
-contract MoveSeeker is ActionType {
-    enum Direction {
-        NORTH,
-        NORTHEAST,
-        EAST,
-        SOUTHEAST,
-        SOUTH,
-        SOUTHWEST,
-        WEST,
-        NORTHWEST
-    }
-    function encode(NodeID seekerID, Direction dir) public pure returns (bytes memory) {
-        return abi.encode(seekerID, dir);
-    }
-    function decode(bytes memory args) public pure returns (NodeID id, Direction dir) {
-        return abi.decode(args, (NodeID, Direction));
-    }
-    function getTypeDef() external view returns (ActionTypeDef memory def) {
-        def.name = "MOVE_SEEKER";
-        def.id = address(this);
-        def.arg0.name = "seekerID";
-        def.arg0.required = true;
-        def.arg0.kind = ActionArgKind.NODEID;
-        def.arg1.name = "direction";
-        def.arg1.required = true;
-        def.arg1.kind = ActionArgKind.ENUM;
-    }
+interface Actions {
+    function RESET_MAP() external;
+    function REVEAL_SEED(NodeID seedID, uint32 entropy) external;
+    function SPAWN_SEEKER(uint32 sid, uint8 x, uint8 y, uint8 str) external;
+    function MOVE_SEEKER(uint32 sid, Direction dir) external;
 }
 
 // ----------------------------------
@@ -266,7 +206,7 @@ contract HasOwner is EdgeType {
 }
 contract HasLocation is EdgeType {
     function getCoords(State s, NodeID srcNodeID) public view returns (uint32 x, uint32 y) {
-        NodeID id = s.getEdge(EdgeTypeID.wrap(address(this)), srcNodeID).nodeID;
+        NodeID id = s.getEdge(this, srcNodeID).nodeID;
         (,x,y) = NodeIDUtils.decodeID(id);
     }
     function getAttributes(NodeID /*id*/, uint /*idx*/) public pure returns (Attribute[] memory attrs) {
@@ -313,20 +253,15 @@ contract ProvidesEntropyTo is EdgeType {
 contract ResetRule is Rule {
 
     Tile TILE;
-    ResetMap RESET_MAP;
-
-    using EdgeTypeUtils for EdgeType;
 
     constructor(
-        Tile tileNodeTypeAddr,
-        ResetMap resetGameActionTypeAddr
+        Tile tileNodeTypeAddr
     ) {
         TILE = tileNodeTypeAddr;
-        RESET_MAP = resetGameActionTypeAddr;
     }
 
-    function reduce(State state, Action memory action) public returns (State) {
-        if (action.id == address(RESET_MAP)) {
+    function reduce(State state, bytes calldata action, Context calldata /*ctx*/) public returns (State) {
+        if (bytes4(action) == Actions.RESET_MAP.selector) {
             // draw a grid of tiles encoding the x/y into the ID
             for (uint8 x=0; x<32; x++) {
                 for (uint8 y=0; y<32; y++) {
@@ -352,48 +287,30 @@ contract ResetRule is Rule {
         return NodeData.wrap(uint256(getInitialContents(x, y)));
     }
 
-    function getActionTypeDefs() public view returns (ActionTypeDef[] memory defs) {
-        defs = new ActionTypeDef[](1);
-        defs[0] = RESET_MAP.getTypeDef();
-        return defs;
-    }
-
-    // function getNodeTypeDefs() external view returns (NodeTypeDef[] memory defs) {
-    //     defs = new NodeTypeDef[](3);
-    //     defs[0] = TILE.getTypeDef();
-    //     return defs;
-    // }
-
 }
 
 contract SpawnSeekerRule is Rule {
 
     Seeker SEEKER;
     Tile TILE;
-    SpawnSeeker SPAWN_SEEKER;
     HasLocation HAS_LOCATION;
     HasOwner HAS_OWNER;
-
-    using EdgeTypeUtils for HasLocation;
-    using EdgeTypeUtils for HasOwner;
 
     constructor(
         Seeker seekerNodeTypeAddr,
         Tile tileNodeTypeAddr,
         HasLocation hasLocationAddr,
-        HasOwner hasOwnerAddr,
-        SpawnSeeker spawnActionTypeAddr
+        HasOwner hasOwnerAddr
     ) {
         SEEKER = seekerNodeTypeAddr;
         TILE = tileNodeTypeAddr;
         HAS_LOCATION = hasLocationAddr;
         HAS_OWNER = hasOwnerAddr;
-        SPAWN_SEEKER = spawnActionTypeAddr;
     }
 
-    function reduce(State state, Action memory action) public returns (State) {
-        if (action.id == address(SPAWN_SEEKER)) {
-            (uint32 sid, uint8 x, uint8 y, uint8 str) = SPAWN_SEEKER.decode(action.args);
+    function reduce(State state, bytes calldata action, Context calldata ctx) public returns (State) {
+        if (bytes4(action) == Actions.SPAWN_SEEKER.selector) {
+            (uint32 sid, uint8 x, uint8 y, uint8 str) = abi.decode(action[4:], (uint32, uint8, uint8, uint8));
             NodeID id = SEEKER.ID(sid);
             // set seeker stat
             state = SEEKER.setAttributeValues(
@@ -405,16 +322,16 @@ contract SpawnSeekerRule is Rule {
             // still deciding if Accounts should be in the stategraph or stay outside :thinkies:
             // for now, just hack em in by treating the account addr as a nodetype
             state = state.setEdge(
-                HAS_OWNER.ID(),
+                HAS_OWNER,
                 id,
                 EdgeData({
-                    nodeID: NodeTypeUtils.ID( NodeType(action.owner), 0, 0),
+                    nodeID: NodeTypeUtils.ID( NodeType(ctx.sender), 0, 0),
                     weight: 0
                 })
             );
             // set location by pointing a HAS_LOCATION at the tile
             state = state.setEdge(
-                HAS_LOCATION.ID(),
+                HAS_LOCATION,
                 id,
                 EdgeData({
                     nodeID: TILE.ID(x, y),
@@ -437,71 +354,53 @@ contract SpawnSeekerRule is Rule {
         return NodeData.wrap(uint256(getInitialContents(x, y)));
     }
 
-    function getActionTypeDefs() public view returns (ActionTypeDef[] memory defs) {
-        defs = new ActionTypeDef[](1);
-        defs[0] = SPAWN_SEEKER.getTypeDef();
-        return defs;
-    }
-
-    // function getNodeTypeDefs() external view returns (NodeTypeDef[] memory defs) {
-    //     defs = new NodeTypeDef[](3);
-    //     defs[0] = SEEKER.getTypeDef();
-    //     defs[1] = TILE.getTypeDef();
-    //     return defs;
-    // }
-
 }
 
 contract MovementRule is Rule {
 
     Seeker SEEKER;
     Tile TILE;
-    MoveSeeker MOVE_SEEKER;
     HasLocation HAS_LOCATION;
-
-    using EdgeTypeUtils for HasLocation;
 
     constructor(
         Seeker seekerNodeTypeAddr,
         Tile tileNodeTypeAddr,
-        HasLocation hasLocationAddr,
-        MoveSeeker moveActionTypeAddr
+        HasLocation hasLocationAddr
     ) {
         SEEKER = seekerNodeTypeAddr;
         TILE = tileNodeTypeAddr;
         HAS_LOCATION = hasLocationAddr;
-        MOVE_SEEKER = moveActionTypeAddr;
     }
 
-    function reduce(State state, Action memory action) public returns (State) {
+    function reduce(State state, bytes calldata action, Context calldata /*ctx*/) public returns (State) {
         // movement is one tile at a time
         // you can only move onto an discovered tile
-        if (action.id == address(MOVE_SEEKER)) {
-            (NodeID seekerID, MoveSeeker.Direction dir) = MOVE_SEEKER.decode(action.args);
+        if (bytes4(action) == Actions.MOVE_SEEKER.selector) {
+            (uint32 sid, Direction dir) = abi.decode(action[4:], (uint32, Direction));
             (uint32 x, uint32 y) = HAS_LOCATION.getCoords(
                 state,
-                seekerID
+                SEEKER.ID(sid)
             );
             int xx = int(uint(x));
             int yy = int(uint(y));
-            if (dir == MoveSeeker.Direction.NORTH) {
+            if (dir == Direction.NORTH) {
                 yy++;
-            } else if (dir == MoveSeeker.Direction.NORTHEAST) {
+            } else if (dir == Direction.NORTHEAST) {
                 xx++;
                 yy++;
-            } else if (dir == MoveSeeker.Direction.EAST) {
+            } else if (dir == Direction.EAST) {
                 xx++;
-            } else if (dir == MoveSeeker.Direction.SOUTHEAST) {
+            } else if (dir == Direction.SOUTHEAST) {
                 xx++;
                 yy--;
-            } else if (dir == MoveSeeker.Direction.SOUTH) {
+            } else if (dir == Direction.SOUTH) {
                 yy--;
-            } else if (dir == MoveSeeker.Direction.SOUTHWEST) {
+            } else if (dir == Direction.SOUTHWEST) {
                 xx--;
                 yy--;
-            } else if (dir == MoveSeeker.Direction.WEST) {
+            } else if (dir == Direction.WEST) {
                 xx--;
-            } else if (dir == MoveSeeker.Direction.NORTHWEST) {
+            } else if (dir == Direction.NORTHWEST) {
                 xx--;
                 yy--;
             }
@@ -526,8 +425,8 @@ contract MovementRule is Rule {
             }
             // update seeker location
             state = state.setEdge(
-                HAS_LOCATION.ID(),
-                seekerID,
+                HAS_LOCATION,
+                SEEKER.ID(sid),
                 EdgeData({
                     nodeID: targetTile,
                     weight: 0
@@ -537,19 +436,6 @@ contract MovementRule is Rule {
         return state;
     }
 
-    function getActionTypeDefs() public view returns (ActionTypeDef[] memory defs) {
-        defs = new ActionTypeDef[](1);
-        defs[0] = MOVE_SEEKER.getTypeDef();
-        return defs;
-    }
-
-    // function getNodeTypeDefs() external view returns (NodeTypeDef[] memory defs) {
-    //     defs = new NodeTypeDef[](3);
-    //     defs[0] = SEEKER.getTypeDef();
-    //     defs[1] = TILE.getTypeDef();
-    //     return defs;
-    // }
-
 }
 
 
@@ -558,54 +444,48 @@ contract ScoutingRule is Rule {
     Seeker SEEKER;
     Seed SEED;
     Tile TILE;
-    SpawnSeeker SPAWN_SEEKER;
-    MoveSeeker MOVE_SEEKER;
     HasLocation HAS_LOCATION;
-    RevealSeed REVEAL_SEED;
     ProvidesEntropyTo PROVIDES_ENTROPY_TO;
-
-    using EdgeTypeUtils for HasLocation;
-    using EdgeTypeUtils for ProvidesEntropyTo;
 
     constructor(
         Seeker seekerNodeTypeAddr,
         Seed seedNodeTypeAddr,
         Tile tileNodeTypeAddr,
         HasLocation hasLocationAddr,
-        RevealSeed revealSeedAddr,
-        SpawnSeeker spawnActionTypeAddr,
-        MoveSeeker moveActionTypeAddr,
         ProvidesEntropyTo providesEntropyEdgeAddr
     ) {
         SEEKER = seekerNodeTypeAddr;
         SEED = seedNodeTypeAddr;
         TILE = tileNodeTypeAddr;
         HAS_LOCATION = hasLocationAddr;
-        REVEAL_SEED = revealSeedAddr;
-        SPAWN_SEEKER = spawnActionTypeAddr;
-        MOVE_SEEKER = moveActionTypeAddr;
         PROVIDES_ENTROPY_TO = providesEntropyEdgeAddr;
     }
 
-    function reduce(State state, Action memory action) public returns (State) {
+    function reduce(State state, bytes calldata action, Context calldata ctx) public returns (State) {
         // scouting tiles is performed in two stages
         // stage1: we commit to a SEED during a MOVE_SEEKER or SPAWN_SEEKER action
         // stage2: occurs when a REVEAL_SEED action is processed
-        if (action.id == address(SPAWN_SEEKER)) {
-            (, uint8 x, uint8 y,) = SPAWN_SEEKER.decode(action.args);
-            state = commitAdjacent(state, action, int(uint(x)), int(uint(y)));
-        } else if (action.id == address(MOVE_SEEKER)) {
-            (NodeID seekerID,) = MOVE_SEEKER.decode(action.args);
-            (uint32 x, uint32 y) = HAS_LOCATION.getCoords(state, seekerID);
-            state = commitAdjacent(state, action, int(uint(x)), int(uint(y)));
-        } else if (action.id == address(REVEAL_SEED)) {
-            (NodeID seed, uint32 entropy) = REVEAL_SEED.decode(action.args);
-            state = revealTiles(state, action, seed, entropy);
+        if (bytes4(action) == Actions.SPAWN_SEEKER.selector) {
+
+            (, uint8 x, uint8 y,) = abi.decode(action[4:], (uint32, uint8, uint8, uint8));
+            state = commitAdjacent(state, ctx, int(uint(x)), int(uint(y)));
+
+        } else if (bytes4(action) == Actions.MOVE_SEEKER.selector) {
+
+            (uint32 sid,) = abi.decode(action[4:], (uint32, Direction));
+            (uint32 x, uint32 y) = HAS_LOCATION.getCoords(state, SEEKER.ID(sid));
+            state = commitAdjacent(state, ctx, int(uint(x)), int(uint(y)));
+
+        } else if (bytes4(action) == Actions.REVEAL_SEED.selector) {
+
+            (NodeID seed, uint32 entropy) = abi.decode(action[4:], (NodeID, uint32));
+            state = revealTiles(state, seed, entropy);
+
         }
         return state;
     }
 
-    function commitAdjacent(State state, Action memory action, int x, int y) private returns (State) {
+    function commitAdjacent(State state, Context calldata ctx, int x, int y) private returns (State) {
         int xx;
         int yy;
         for (uint8 i=0; i<8; i++) {
@@ -651,8 +531,8 @@ contract ScoutingRule is Rule {
                 // edges to check if we need to add another one, but it's
                 // probably cheaper to just append another one and not worry about it
                 state.appendEdge(
-                    PROVIDES_ENTROPY_TO.ID(),
-                    SEED.ID(uint32(action.block)),
+                    PROVIDES_ENTROPY_TO,
+                    SEED.ID(ctx.clock),
                     EdgeData({
                         nodeID: tileID,
                         weight: 0
@@ -663,9 +543,9 @@ contract ScoutingRule is Rule {
         return state;
     }
 
-    function revealTiles(State state, Action memory /*action*/, NodeID seedID, uint32 entropy) private returns (State) {
+    function revealTiles(State state, NodeID seedID, uint32 entropy) private returns (State) {
         EdgeData[] memory targetTiles = state.getEdges(
-            PROVIDES_ENTROPY_TO.ID(),
+            PROVIDES_ENTROPY_TO,
             seedID
         );
         for (uint i=0; i<targetTiles.length; i++) {
@@ -695,19 +575,6 @@ contract ScoutingRule is Rule {
         return uint8(uint( keccak256(abi.encodePacked(x, y, entropy)) ) % 255);
     }
 
-    function getActionTypeDefs() public view returns (ActionTypeDef[] memory defs) {
-        defs = new ActionTypeDef[](1);
-        defs[0] = SPAWN_SEEKER.getTypeDef();
-        return defs;
-    }
-
-    // function getNodeTypeDefs() external view returns (NodeTypeDef[] memory defs) {
-    //     defs = new NodeTypeDef[](3);
-    //     defs[0] = SEEKER.getTypeDef();
-    //     defs[1] = TILE.getTypeDef();
-    //     return defs;
-    // }
-
 }
 
 contract HarvestRule is Rule {
@@ -715,38 +582,33 @@ contract HarvestRule is Rule {
     Seeker SEEKER;
     Tile TILE;
     Resource RESOURCE;
-    MoveSeeker MOVE_SEEKER;
     HasLocation HAS_LOCATION;
     HasResource HAS_RESOURCE;
-
-    using EdgeTypeUtils for HasLocation;
-    using EdgeTypeUtils for HasResource;
 
     constructor(
         Seeker seekerNodeTypeAddr,
         Tile tileNodeTypeAddr,
         Resource resourceNodeTypeAddr,
         HasLocation hasLocationAddr,
-        HasResource hasResourceAddr,
-        MoveSeeker moveActionTypeAddr
+        HasResource hasResourceAddr
     ) {
         SEEKER = seekerNodeTypeAddr;
         TILE = tileNodeTypeAddr;
         RESOURCE = resourceNodeTypeAddr;
         HAS_LOCATION = hasLocationAddr;
         HAS_RESOURCE = hasResourceAddr;
-        MOVE_SEEKER = moveActionTypeAddr;
     }
 
-    function reduce(State state, Action memory action) public returns (State) {
+    function reduce(State state, bytes calldata action, Context calldata /*ctx*/) public returns (State) {
         // harvesting is triggered when you move to tile with CORN on it
         // standing on a CORN tile converts the tile to a GRASS tile
         // and increases the seeker's CORN balance in their STORAGE
-        if (action.id == address(MOVE_SEEKER)) {
-            (NodeID seekerID,) = MOVE_SEEKER.decode(action.args);
+        if (bytes4(action) == Actions.MOVE_SEEKER.selector) {
+            (uint32 sid,) = abi.decode(action[4:], (uint32, Direction));
+
             (uint32 x, uint32 y) = HAS_LOCATION.getCoords(
                 state,
-                seekerID
+                SEEKER.ID(sid)
             );
             NodeID targetTile = TILE.ID(x,y);
             (Tile.Contents c,,) = TILE.getAttributeValues(
@@ -763,15 +625,15 @@ contract HarvestRule is Rule {
                 );
                 // get current balance of corn
                 uint32 balance = state.getEdge(
-                    HAS_RESOURCE.ID(),
-                    seekerID
+                    HAS_RESOURCE,
+                    SEEKER.ID(sid)
                 ).weight;
                 // increase the balance
                 balance++;
                 // store new balance
                 state = state.setEdge(
-                    HAS_RESOURCE.ID(),
-                    seekerID,
+                    HAS_RESOURCE,
+                    SEEKER.ID(sid),
                     EdgeData({
                         nodeID: RESOURCE.ID(Resource.Kind.CORN),
                         weight: balance
@@ -783,20 +645,6 @@ contract HarvestRule is Rule {
         return state;
     }
 
-    function getActionTypeDefs() public view returns (ActionTypeDef[] memory defs) {
-        defs = new ActionTypeDef[](1);
-        defs[0] = MOVE_SEEKER.getTypeDef();
-        return defs;
-    }
-
-    // function getNodeTypeDefs() external view returns (NodeTypeDef[] memory defs) {
-    //     defs = new NodeTypeDef[](3);
-    //     defs[0] = SEEKER.getTypeDef();
-    //     defs[1] = TILE.getTypeDef();
-    //     defs[2] = RESOURCE.getTypeDef();
-    //     return defs;
-    // }
-
 }
 
 
@@ -804,137 +652,63 @@ contract HarvestRule is Rule {
 // define a game as a set of rules
 // ----------------------------------
 
-contract CornSeekers is BaseDispatcher {
+contract CornSeekers is Game, BasicGame {
 
-    constructor(State s, Rule[] memory rs) BaseDispatcher(s) {
+    // node type refs
+    Seeker public SEEKER;
+    Seed public SEED;
+    Tile public TILE;
+    Resource public RESOURCE;
 
-        bool doStuff = false;
-        if (rs.length == 0) {
-            rs = setupDefaultRules();
-            doStuff = true;
-        }
+    // edge refs
+    ProvidesEntropyTo public PROVIDES_ENTROPY_TO;
+    HasOwner public HAS_OWNER;
+    HasLocation public HAS_LOCATION;
+    HasResource public HAS_RESOURCE;
 
-        // assign all the given rules (this is hacky to allow from test)
-        // TODO: we should be defining all the rules here not passing them in
-        for (uint i=0; i<rs.length; i++) {
-            registerRule(rs[i]);
-        }
-
-        // hacky dispatching so I have some data to play with
-        // TODO: remove this
-        if (doStuff) {
-            dispatchSomeStuff();
-        }
-    }
-
-    ResetMap RESET_MAP;
-    RevealSeed REVEAL_SEED;
-    MoveSeeker MOVE_SEEKER;
-    SpawnSeeker SPAWN_SEEKER;
-    Seeker SEEKER;
-    Seed SEED;
-    Tile TILE;
-    Resource RESOURCE;
-
-    function setupDefaultRules() public returns (Rule[] memory rules) {
-
-        // setup actions
-        RESET_MAP = new ResetMap();
-        REVEAL_SEED = new RevealSeed();
-        MOVE_SEEKER = new MoveSeeker();
-        SPAWN_SEEKER = new SpawnSeeker();
-
-        // setup nodes
+    constructor() BasicGame("CORNSEEKERS") {
+        // setup node types
         SEEKER = new Seeker();
         SEED = new Seed();
         TILE = new Tile();
         RESOURCE = new Resource();
 
-        // setup edges
-        ProvidesEntropyTo PROVIDES_ENTROPY_TO = new ProvidesEntropyTo();
-        HasOwner HAS_OWNER = new HasOwner();
-        HasLocation HAS_LOCATION = new HasLocation();
-        HasResource HAS_RESOURCE = new HasResource();
+        // setup edge types
+        PROVIDES_ENTROPY_TO = new ProvidesEntropyTo();
+        HAS_OWNER = new HasOwner();
+        HAS_LOCATION = new HasLocation();
+        HAS_RESOURCE = new HasResource();
 
         // setup rules
-        rules = new Rule[](5);
-        rules[0] = new ResetRule(
-            Tile(address(TILE)),
-            ResetMap(address(RESET_MAP))
-        );
-        rules[1] = new SpawnSeekerRule(
+        dispatcher.registerRule(new ResetRule(
+            Tile(address(TILE))
+        ));
+        dispatcher.registerRule(new SpawnSeekerRule(
             Seeker(address(SEEKER)),
             Tile(address(TILE)),
             HasLocation(address(HAS_LOCATION)),
-            HasOwner(address(HAS_OWNER)),
-            SpawnSeeker(address(SPAWN_SEEKER))
-        );
-        rules[2] = new MovementRule(
+            HasOwner(address(HAS_OWNER))
+        ));
+        dispatcher.registerRule(new MovementRule(
             Seeker(address(SEEKER)),
             Tile(address(TILE)),
-            HasLocation(address(HAS_LOCATION)),
-            MoveSeeker(address(MOVE_SEEKER))
-        );
-        rules[3] = new ScoutingRule(
+            HasLocation(address(HAS_LOCATION))
+        ));
+        dispatcher.registerRule(new ScoutingRule(
             Seeker(address(SEEKER)),
             Seed(address(SEED)),
             Tile(address(TILE)),
             HasLocation(address(HAS_LOCATION)),
-            RevealSeed(address(REVEAL_SEED)),
-            SpawnSeeker(address(SPAWN_SEEKER)),
-            MoveSeeker(address(MOVE_SEEKER)),
             ProvidesEntropyTo(address(PROVIDES_ENTROPY_TO))
-        );
-        rules[4] = new HarvestRule(
+        ));
+        dispatcher.registerRule(new HarvestRule(
             Seeker(address(SEEKER)),
             Tile(address(TILE)),
             Resource(address(RESOURCE)),
             HasLocation(address(HAS_LOCATION)),
-            HasResource(address(HAS_RESOURCE)),
-            MoveSeeker(address(MOVE_SEEKER))
-        );
-        return rules;
+            HasResource(address(HAS_RESOURCE))
+        ));
     }
 
-    function dispatchSomeStuff() public {
-        // reset map
-        dispatch(Action({
-            owner: msg.sender,
-            id: address(RESET_MAP),
-            args: "",
-            block: block.number
-        }));
-
-        // spawn a blokey
-        dispatch(Action({
-            owner: msg.sender,
-            id: address(SPAWN_SEEKER),
-            args: abi.encode(
-                uint32(1),
-                uint8(0),  // x
-                uint8(0),  // y
-                uint8(100) // str
-            ),
-            block: block.number
-        }));
-
-        // move the blokey
-        dispatch(Action({
-            owner: msg.sender,
-            id: address(MOVE_SEEKER),
-            args: abi.encode(
-                uint32(1),
-                MoveSeeker.Direction.NORTHEAST
-            ),
-            block: block.number
-        }));
-    }
-
-    function dispatch(Action memory action) public {
-        // do any custom action validation/authorization here
-        // ...
-        // call _dispatch to send action through the registered rules
-        _dispatch(action);
-    }
 }
 
