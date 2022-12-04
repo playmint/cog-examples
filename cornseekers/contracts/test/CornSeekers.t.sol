@@ -3,39 +3,10 @@ pragma solidity ^0.8.13;
 
 import "forge-std/Test.sol";
 
-import {
-    State,
-    NodeType,
-    EdgeType,
-    EdgeData,
-    NodeTypeUtils,
-    NodeIDUtils,
-    NodeID
-} from "cog/State.sol";
-import {
-    Action,
-    Rule
-} from "cog/Dispatcher.sol";
-import {StateGraph} from "cog/StateGraph.sol";
+import { State, NodeID, EdgeData } from "cog/State.sol";
 
-import {
-    Actions,
-    CornSeekers,
-    Direction,
-    Seeker,
-    Resource,
-    Tile,
-    ResetRule,
-    SpawnSeekerRule,
-    MovementRule,
-    ScoutingRule,
-    HarvestRule,
-    Seed,
-    HasOwner,
-    HasLocation,
-    HasResource,
-    ProvidesEntropyTo
-} from "../src/CornSeekers.sol";
+import { CornSeekers} from "../src/Game.sol";
+import { Actions, Direction, Contents } from "../src/actions/Actions.sol";
 
 contract CornSeekersTest is Test {
 
@@ -96,7 +67,7 @@ contract CornSeekersTest is Test {
         game.TILE().setAttributeValues(
             g,
             game.TILE().ID(1,1),
-            Tile.Contents.CORN
+            Contents.CORN
         );
 
         // move the seeker NORTHEAST to tile (1,1)
@@ -174,13 +145,13 @@ contract CornSeekersTest is Test {
         assertEq(pendingTiles.length, 1);
 
         // the pending tile should be UNDISCOVERED
-        (Tile.Contents pendingContent,,) = game.TILE().getAttributeValues(
+        (Contents pendingContent,,) = game.TILE().getAttributeValues(
             g,
             pendingTiles[0].nodeID
         );
         assertEq(
             uint(pendingContent),
-            uint(Tile.Contents.UNDISCOVERED)
+            uint(Contents.UNDISCOVERED)
         );
 
         // wait until the blockhash is revealed
@@ -197,13 +168,13 @@ contract CornSeekersTest is Test {
         );
 
         // The pendingTile should now be discovered
-        (Tile.Contents discoveredContent,,) = game.TILE().getAttributeValues(
+        (Contents discoveredContent,,) = game.TILE().getAttributeValues(
             g,
             pendingTiles[0].nodeID
         );
         assertGt(
             uint(discoveredContent),
-            uint(Tile.Contents.UNDISCOVERED)
+            uint(Contents.UNDISCOVERED)
         );
 
         // move the seeker NORTHEAST
@@ -261,7 +232,7 @@ contract CornSeekersTest is Test {
             );
             assertGt(
                 uint(pendingContent),
-                uint(Tile.Contents.UNDISCOVERED)
+                uint(Contents.UNDISCOVERED)
             );
         }
 
