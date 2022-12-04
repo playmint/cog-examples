@@ -6,14 +6,14 @@ import {
     BasicGame
 } from "cog/Game.sol";
 
-import { HarvestRule } from "./rules/HarvestRule.sol";
-import { ScoutingRule } from "./rules/ScoutingRule.sol";
-import { ResetRule } from "./rules/ResetRule.sol";
-import { MovementRule } from "./rules/MovementRule.sol";
-import { SpawnSeekerRule } from "./rules/SpawnSeekerRule.sol";
+import { HarvestRule } from "src/rules/HarvestRule.sol";
+import { ScoutingRule } from "src/rules/ScoutingRule.sol";
+import { ResetRule } from "src/rules/ResetRule.sol";
+import { MovementRule } from "src/rules/MovementRule.sol";
+import { SpawnSeekerRule } from "src/rules/SpawnSeekerRule.sol";
 
-import { Seeker, Seed, Tile, Resource } from "./schema/Nodes.sol";
-import { ProvidesEntropyTo, HasOwner, HasLocation, HasResource } from "./schema/Edges.sol";
+import { Seeker, Seed, Tile, Resource } from "src/schema/Nodes.sol";
+import { ProvidesEntropyTo, HasOwner, HasLocation, HasResource } from "src/schema/Edges.sol";
 
 // -----------------------------------------------
 // a Game sets up the State, Dispatcher and Router

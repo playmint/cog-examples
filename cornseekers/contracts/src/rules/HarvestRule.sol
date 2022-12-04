@@ -3,9 +3,9 @@ pragma solidity ^0.8.13;
 
 import { State, EdgeData, NodeID } from "cog/State.sol";
 import { Context, Rule } from "cog/Dispatcher.sol";
-import { Seeker, Tile, Resource } from "../schema/Nodes.sol";
-import { HasLocation, HasResource } from "../schema/Edges.sol";
-import { Actions, Direction, Contents } from "../actions/Actions.sol";
+import { Seeker, Tile, Resource } from "src/schema/Nodes.sol";
+import { HasLocation, HasResource } from "src/schema/Edges.sol";
+import { Actions, Direction, Contents } from "src/actions/Actions.sol";
 
 
 contract HarvestRule is Rule {

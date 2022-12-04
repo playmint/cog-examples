@@ -11,7 +11,7 @@ import {
     NodeIDUtils,
     NodeID
 } from "cog/State.sol";
-import { Contents } from "../actions/Actions.sol";
+import { Contents } from "src/actions/Actions.sol";
 
 contract Seed is NodeType {
     function ID(uint32 blk) public view returns (NodeID) {

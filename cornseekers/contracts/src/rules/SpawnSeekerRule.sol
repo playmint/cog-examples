@@ -3,9 +3,9 @@ pragma solidity ^0.8.13;
 
 import { State, NodeData, NodeID, NodeTypeUtils, EdgeData, NodeType } from "cog/State.sol";
 import { Context, Rule } from "cog/Dispatcher.sol";
-import { Seeker, Tile } from "../schema/Nodes.sol";
-import { HasLocation, HasOwner } from "../schema/Edges.sol";
-import { Actions, Contents } from "../actions/Actions.sol";
+import { Seeker, Tile } from "src/schema/Nodes.sol";
+import { HasLocation, HasOwner } from "src/schema/Edges.sol";
+import { Actions, Contents } from "src/actions/Actions.sol";
 
 contract SpawnSeekerRule is Rule {
 

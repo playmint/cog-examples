@@ -5,8 +5,8 @@ import "forge-std/Test.sol";
 
 import { State, NodeID, EdgeData } from "cog/State.sol";
 
-import { CornSeekers} from "../src/Game.sol";
-import { Actions, Direction, Contents } from "../src/actions/Actions.sol";
+import { CornSeekers} from "src/Game.sol";
+import { Actions, Direction, Contents } from "src/actions/Actions.sol";
 
 contract CornSeekersTest is Test {
 

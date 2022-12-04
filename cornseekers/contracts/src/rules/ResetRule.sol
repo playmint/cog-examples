@@ -3,8 +3,8 @@ pragma solidity ^0.8.13;
 
 import { State, NodeData } from "cog/State.sol";
 import { Context, Rule } from "cog/Dispatcher.sol";
-import { Tile } from "../schema/Nodes.sol";
-import { Actions, Contents } from "../actions/Actions.sol";
+import { Tile } from "src/schema/Nodes.sol";
+import { Actions, Contents } from "src/actions/Actions.sol";
 
 contract ResetRule is Rule {
 

@@ -3,9 +3,9 @@ pragma solidity ^0.8.13;
 
 import { State, NodeID, EdgeData } from "cog/State.sol";
 import { Context, Rule } from "cog/Dispatcher.sol";
-import { Seeker, Tile } from "../schema/Nodes.sol";
-import { ProvidesEntropyTo, HasLocation } from "../schema/Edges.sol";
-import { Actions, Direction, Contents } from "../actions/Actions.sol";
+import { Seeker, Tile } from "src/schema/Nodes.sol";
+import { ProvidesEntropyTo, HasLocation } from "src/schema/Edges.sol";
+import { Actions, Direction, Contents } from "src/actions/Actions.sol";
 
 contract MovementRule is Rule {
 
