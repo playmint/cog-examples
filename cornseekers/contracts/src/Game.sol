@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-import {
-    Game,
-    BasicGame
-} from "cog/Game.sol";
+import { BasicGame } from "cog/Game.sol";
 
 import { HarvestRule } from "src/rules/HarvestRule.sol";
 import { ScoutingRule } from "src/rules/ScoutingRule.sol";
@@ -14,6 +11,9 @@ import { SpawnSeekerRule } from "src/rules/SpawnSeekerRule.sol";
 
 import { Seeker, Seed, Tile, Resource } from "src/schema/Nodes.sol";
 import { ProvidesEntropyTo, HasOwner, HasLocation, HasResource } from "src/schema/Edges.sol";
+
+import { SessionRouter } from "cog/SessionRouter.sol";
+import { Actions } from "src/actions/Actions.sol";
 
 // -----------------------------------------------
 // a Game sets up the State, Dispatcher and Router
@@ -25,7 +25,7 @@ import { ProvidesEntropyTo, HasOwner, HasLocation, HasResource } from "src/schem
 // so all we need to do here is call registerRule()
 // -----------------------------------------------
 
-contract CornSeekers is Game, BasicGame {
+contract Game is BasicGame {
 
     // node type refs
     Seeker public SEEKER;
@@ -81,6 +81,12 @@ contract CornSeekers is Game, BasicGame {
             HasLocation(address(HAS_LOCATION)),
             HasResource(address(HAS_RESOURCE))
         ));
+
+        // TODO: REMOVE THESE - I'm just playing with the services
+        // dispatcher.dispatch(
+        //     abi.encodeCall(Actions.RESET_MAP, ())
+        // );
+        // SessionRouter(address(router)).authorizeAddr(dispatcher, 0, 0xffffffff, address(0x1));
     }
 
 }

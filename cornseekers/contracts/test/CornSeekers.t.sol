@@ -5,12 +5,12 @@ import "forge-std/Test.sol";
 
 import { State, NodeID, EdgeData } from "cog/State.sol";
 
-import { CornSeekers} from "src/Game.sol";
+import { Game} from "src/Game.sol";
 import { Actions, Direction, Contents } from "src/actions/Actions.sol";
 
 contract CornSeekersTest is Test {
 
-    CornSeekers internal game;
+    Game internal game;
     State internal g;
 
     // accounts
@@ -18,7 +18,7 @@ contract CornSeekersTest is Test {
 
     function setUp() public {
         // setup game
-        game = new CornSeekers();
+        game = new Game();
 
         // fetch the State to play with
         g = game.getState();
