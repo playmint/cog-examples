@@ -46,7 +46,7 @@ contract ScoutingRule is Rule {
 
         } else if (bytes4(action) == Actions.REVEAL_SEED.selector) {
 
-            (NodeID seed, uint32 entropy) = abi.decode(action[4:], (NodeID, uint32));
+            (uint32 seed, uint32 entropy) = abi.decode(action[4:], (uint32, uint32));
             state = revealTiles(state, seed, entropy);
 
         }
@@ -111,10 +111,10 @@ contract ScoutingRule is Rule {
         return state;
     }
 
-    function revealTiles(State state, NodeID seedID, uint32 entropy) private returns (State) {
+    function revealTiles(State state, uint32 seedID, uint32 entropy) private returns (State) {
         EdgeData[] memory targetTiles = state.getEdges(
             PROVIDES_ENTROPY_TO,
-            seedID
+            SEED.ID(seedID)
         );
         for (uint i=0; i<targetTiles.length; i++) {
             (Contents c, uint32 x, uint32 y) = TILE.getAttributeValues(

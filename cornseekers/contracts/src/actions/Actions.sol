@@ -33,7 +33,7 @@ enum Contents {
 
 interface Actions {
     function RESET_MAP() external;
-    function REVEAL_SEED(NodeID seedID, uint32 entropy) external;
+    function REVEAL_SEED(uint32 seedID, uint32 entropy) external;
     function SPAWN_SEEKER(uint32 sid, uint8 x, uint8 y, uint8 str) external;
     function MOVE_SEEKER(uint32 sid, Direction dir) external;
 }

@@ -162,7 +162,7 @@ contract CornSeekersTest is Test {
         // to resolve it
         game.getDispatcher().dispatch(
             abi.encodeCall(Actions.REVEAL_SEED, (
-                game.SEED().ID(uint32(block.number - 1)),
+                uint32(block.number - 1),
                 uint32(uint(blockhash(block.number-1)))
             ))
         );
@@ -219,7 +219,7 @@ contract CornSeekersTest is Test {
         // submit the reveal action
         game.getDispatcher().dispatch(
             abi.encodeCall(Actions.REVEAL_SEED, (
-                game.SEED().ID(uint32(block.number - 1)),
+                uint32(block.number - 1),
                 uint32(uint(blockhash(block.number-1)))
             ))
         );
