@@ -44,6 +44,7 @@ done
 echo "+---------------------+"
 echo "| deploying contracts |"
 echo "+---------------------+"
+sleep 2
 ./initall.sh
 
 # copy into shared volume
