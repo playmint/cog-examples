@@ -14,6 +14,7 @@ import { SpawnSeekerRule } from "src/rules/SpawnSeekerRule.sol";
 
 import { SessionRouter } from "cog/SessionRouter.sol";
 import { Actions } from "src/actions/Actions.sol";
+import { Rel, Kind } from "src/schema/Schema.sol";
 
 // -----------------------------------------------
 // a Game sets up the State, Dispatcher and Router
@@ -30,6 +31,20 @@ contract Game is BaseGame {
     constructor() BaseGame("CORNSEEKERS") {
         // create a state
         StateGraph state = new StateGraph();
+
+        // register the kind ids we are using
+        state.registerNodeType(Kind.Seed.selector, "Seed");
+        state.registerNodeType(Kind.Tile.selector, "Tile");
+        state.registerNodeType(Kind.Resource.selector, "Resource");
+        state.registerNodeType(Kind.Seeker.selector, "Seeker");
+
+        // register the relationship ids we are using
+        state.registerEdgeType(Rel.Owner.selector, "Owner");
+        state.registerEdgeType(Rel.Location.selector, "Location");
+        state.registerEdgeType(Rel.Balance.selector, "Balance");
+        state.registerEdgeType(Rel.Biome.selector, "Biome");
+        state.registerEdgeType(Rel.Strength.selector, "Strength");
+        state.registerEdgeType(Rel.ProvidesEntropyTo.selector, "ProvidesEntropyTo");
 
         // create a session router
         SessionRouter router = new SessionRouter();
