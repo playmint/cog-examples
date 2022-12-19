@@ -1,34 +1,14 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-import { State, EdgeData, NodeID } from "cog/State.sol";
+import { State } from "cog/State.sol";
 import { Context, Rule } from "cog/Dispatcher.sol";
-import { Seeker, Tile, Resource } from "src/schema/Nodes.sol";
-import { HasLocation, HasResource } from "src/schema/Edges.sol";
-import { Actions, Direction, Contents } from "src/actions/Actions.sol";
+import { Schema, Node, BiomeKind, ResourceKind } from "src/schema/Schema.sol";
+import { Actions, Direction } from "src/actions/Actions.sol";
 
+using Schema for State;
 
 contract HarvestRule is Rule {
-
-    Seeker SEEKER;
-    Tile TILE;
-    Resource RESOURCE;
-    HasLocation HAS_LOCATION;
-    HasResource HAS_RESOURCE;
-
-    constructor(
-        Seeker seekerNodeTypeAddr,
-        Tile tileNodeTypeAddr,
-        Resource resourceNodeTypeAddr,
-        HasLocation hasLocationAddr,
-        HasResource hasResourceAddr
-    ) {
-        SEEKER = seekerNodeTypeAddr;
-        TILE = tileNodeTypeAddr;
-        RESOURCE = resourceNodeTypeAddr;
-        HAS_LOCATION = hasLocationAddr;
-        HAS_RESOURCE = hasResourceAddr;
-    }
 
     function reduce(State state, bytes calldata action, Context calldata /*ctx*/) public returns (State) {
         // harvesting is triggered when you move to tile with CORN on it
@@ -36,40 +16,20 @@ contract HarvestRule is Rule {
         // and increases the seeker's CORN balance in their STORAGE
         if (bytes4(action) == Actions.MOVE_SEEKER.selector) {
             (uint32 sid,) = abi.decode(action[4:], (uint32, Direction));
+            bytes12 seeker = Node.Seeker(sid);
 
-            (uint32 x, uint32 y) = HAS_LOCATION.getCoords(
-                state,
-                SEEKER.ID(sid)
-            );
-            NodeID targetTile = TILE.ID(x,y);
-            (Contents c,,) = TILE.getAttributeValues(
-                state,
-                targetTile
-            );
-            if (c == Contents.CORN) {
+            (uint32 x, uint32 y) = state.getLocationCoords(seeker);
+            bytes12 targetTile = Node.Tile(x,y);
+            BiomeKind biome = state.getBiome(targetTile);
+            if (biome == BiomeKind.CORN) {
                 // convert tile to grass
-                c = Contents.GRASS;
-                state = TILE.setAttributeValues(
-                    state,
-                    targetTile,
-                    c
-                );
-                // get current balance of corn
-                uint32 balance = state.getEdge(
-                    HAS_RESOURCE,
-                    SEEKER.ID(sid)
-                ).weight;
+                state.setBiome(targetTile, BiomeKind.GRASS);
+                // get seeker's current balance of corn
+                uint32 balance = state.getResourceBalance(Node.Seeker(sid), ResourceKind.CORN);
                 // increase the balance
                 balance++;
                 // store new balance
-                state = state.setEdge(
-                    HAS_RESOURCE,
-                    SEEKER.ID(sid),
-                    EdgeData({
-                        nodeID: RESOURCE.ID(Resource.Kind.CORN),
-                        weight: balance
-                    })
-                );
+                state.setResourceBalance(Node.Seeker(sid), ResourceKind.CORN, balance);
             }
 
         }

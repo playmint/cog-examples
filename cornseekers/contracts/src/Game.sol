@@ -9,9 +9,6 @@ import { ResetRule } from "src/rules/ResetRule.sol";
 import { MovementRule } from "src/rules/MovementRule.sol";
 import { SpawnSeekerRule } from "src/rules/SpawnSeekerRule.sol";
 
-import { Seeker, Seed, Tile, Resource } from "src/schema/Nodes.sol";
-import { ProvidesEntropyTo, HasOwner, HasLocation, HasResource } from "src/schema/Edges.sol";
-
 import { SessionRouter } from "cog/SessionRouter.sol";
 import { Actions } from "src/actions/Actions.sol";
 
@@ -27,60 +24,13 @@ import { Actions } from "src/actions/Actions.sol";
 
 contract Game is BasicGame {
 
-    // node type refs
-    Seeker public SEEKER;
-    Seed public SEED;
-    Tile public TILE;
-    Resource public RESOURCE;
-
-    // edge refs
-    ProvidesEntropyTo public PROVIDES_ENTROPY_TO;
-    HasOwner public HAS_OWNER;
-    HasLocation public HAS_LOCATION;
-    HasResource public HAS_RESOURCE;
-
     constructor() BasicGame("CORNSEEKERS") {
-        // setup node types
-        SEEKER = new Seeker();
-        SEED = new Seed();
-        TILE = new Tile();
-        RESOURCE = new Resource();
-
-        // setup edge types
-        PROVIDES_ENTROPY_TO = new ProvidesEntropyTo();
-        HAS_OWNER = new HasOwner();
-        HAS_LOCATION = new HasLocation();
-        HAS_RESOURCE = new HasResource();
-
         // setup rules
-        dispatcher.registerRule(new ResetRule(
-            Tile(address(TILE))
-        ));
-        dispatcher.registerRule(new SpawnSeekerRule(
-            Seeker(address(SEEKER)),
-            Tile(address(TILE)),
-            HasLocation(address(HAS_LOCATION)),
-            HasOwner(address(HAS_OWNER))
-        ));
-        dispatcher.registerRule(new MovementRule(
-            Seeker(address(SEEKER)),
-            Tile(address(TILE)),
-            HasLocation(address(HAS_LOCATION))
-        ));
-        dispatcher.registerRule(new ScoutingRule(
-            Seeker(address(SEEKER)),
-            Seed(address(SEED)),
-            Tile(address(TILE)),
-            HasLocation(address(HAS_LOCATION)),
-            ProvidesEntropyTo(address(PROVIDES_ENTROPY_TO))
-        ));
-        dispatcher.registerRule(new HarvestRule(
-            Seeker(address(SEEKER)),
-            Tile(address(TILE)),
-            Resource(address(RESOURCE)),
-            HasLocation(address(HAS_LOCATION)),
-            HasResource(address(HAS_RESOURCE))
-        ));
+        dispatcher.registerRule(new ResetRule());
+        dispatcher.registerRule(new SpawnSeekerRule());
+        dispatcher.registerRule(new MovementRule());
+        dispatcher.registerRule(new ScoutingRule());
+        dispatcher.registerRule(new HarvestRule());
 
         // TODO: REMOVE THESE - I'm just playing with the services
         // dispatcher.dispatch(

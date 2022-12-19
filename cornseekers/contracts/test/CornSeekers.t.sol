@@ -3,15 +3,18 @@ pragma solidity ^0.8.13;
 
 import "forge-std/Test.sol";
 
-import { State, NodeID, EdgeData } from "cog/State.sol";
+import { State } from "cog/State.sol";
 
-import { Game} from "src/Game.sol";
-import { Actions, Direction, Contents } from "src/actions/Actions.sol";
+import { Game } from "src/Game.sol";
+import { Actions, Direction } from "src/actions/Actions.sol";
+import { Schema, Node, BiomeKind, ResourceKind } from "src/schema/Schema.sol";
+
+using Schema for State;
 
 contract CornSeekersTest is Test {
 
     Game internal game;
-    State internal g;
+    State internal state;
 
     // accounts
     address aliceAccount;
@@ -21,7 +24,7 @@ contract CornSeekersTest is Test {
         game = new Game();
 
         // fetch the State to play with
-        g = game.getState();
+        state = game.getState();
 
         // setup users
         uint256 alicePrivateKey = 0xA11CE;
@@ -51,24 +54,20 @@ contract CornSeekersTest is Test {
             ))
         );
 
-        // comfirm seeker is at tile (0,0)
-        assertNodeEq(
-            g.getEdge( game.HAS_LOCATION(), game.SEEKER().ID(1)).nodeID,
-            game.TILE().ID(0,0)
+        assertEq(
+            state.getLocation(Node.Seeker(1)),
+            Node.Tile(0,0),
+            "expected seeker to start at tile 0,0"
         );
 
-        // confirm our current corn balance is 0
         assertEq(
-            g.getEdge(game.HAS_RESOURCE(), game.SEEKER().ID(1)).weight,
-            0
+            state.getResourceBalance(Node.Seeker(1), ResourceKind.CORN),
+            0,
+            "expected seeker's CORN resource balance to start at zero"
         );
 
         // hack in CORN at tile (1,1) to bypass scouting
-        game.TILE().setAttributeValues(
-            g,
-            game.TILE().ID(1,1),
-            Contents.CORN
-        );
+        state.setBiome( Node.Tile(1,1), BiomeKind.CORN );
 
         // move the seeker NORTHEAST to tile (1,1)
         game.getDispatcher().dispatch(
@@ -79,15 +78,17 @@ contract CornSeekersTest is Test {
         );
 
         // comfirm seeker is now at tile (1,1)
-        assertNodeEq(
-            g.getEdge(game.HAS_LOCATION(), game.SEEKER().ID(1)).nodeID,
-            game.TILE().ID(1,1)
+        assertEq(
+            state.getLocation(Node.Seeker(1)),
+            Node.Tile(1,1),
+            "expected seeker 1 at tile 1,1"
         );
 
         // confirm our corn balance is now 1
         assertEq(
-            g.getEdge(game.HAS_RESOURCE(), game.SEEKER().ID(1)).weight,
-            1
+            state.getResourceBalance(Node.Seeker(1), ResourceKind.CORN),
+            1,
+            "expected seeker 1 to have 1unit of corn"
         );
 
         // stop being alice
@@ -121,37 +122,31 @@ contract CornSeekersTest is Test {
             ))
         );
 
-        // there should be a seeker with a strength value
-        uint8 str = game.SEEKER().getAttributeValues(g, game.SEEKER().ID(1));
+        uint64 str = state.getStrength(Node.Seeker(1));
         assertEq(
             str,
-            100
+            100,
+            "expect seeker 1 to have a strength set"
         );
 
-        // the seeker should have location
-        assertNodeEq(
-            g.getEdge(game.HAS_LOCATION(), game.SEEKER().ID(1)).nodeID,
-            game.TILE().ID(0,0)
+        assertEq(
+            state.getLocation(Node.Seeker(1)),
+            Node.Tile(0,0),
+            "expect seeker to have a location"
         );
 
-        // there should now be 1 PROVIDES_ENTROPY_TO edges
-        // since the outter edge of the map is auto discovered
-        // and since we start in a corner, so there shoiuld be
-        // 1 UNDISCOVERED adjancent tile
-        EdgeData[] memory pendingTiles = g.getEdges(
-            game.PROVIDES_ENTROPY_TO(),
-            game.SEED().ID(uint32(block.number))
+        bytes12[] memory pendingTiles = state.getEntropyCommitments(uint32(block.number));
+        assertEq(
+            pendingTiles.length,
+            1,
+            "expected 1 pending adjacent tile caused by spawning seeker at 0,0"
         );
-        assertEq(pendingTiles.length, 1);
 
-        // the pending tile should be UNDISCOVERED
-        (Contents pendingContent,,) = game.TILE().getAttributeValues(
-            g,
-            pendingTiles[0].nodeID
-        );
+        BiomeKind pendingContent = state.getBiome(pendingTiles[0]);
         assertEq(
             uint(pendingContent),
-            uint(Contents.UNDISCOVERED)
+            uint(BiomeKind.UNDISCOVERED),
+            "the one pending tile should be UNDISCOVERED"
         );
 
         // wait until the blockhash is revealed
@@ -167,14 +162,11 @@ contract CornSeekersTest is Test {
             ))
         );
 
-        // The pendingTile should now be discovered
-        (Contents discoveredContent,,) = game.TILE().getAttributeValues(
-            g,
-            pendingTiles[0].nodeID
-        );
+        BiomeKind discoveredContent = state.getBiome(pendingTiles[0]);
         assertGt(
             uint(discoveredContent),
-            uint(Contents.UNDISCOVERED)
+            uint(BiomeKind.UNDISCOVERED),
+            "the pending tile sholud now be discovered"
         );
 
         // move the seeker NORTHEAST
@@ -185,32 +177,30 @@ contract CornSeekersTest is Test {
             ))
         );
 
-        // seeker should now have location at 1,1
-        assertNodeEq(
-            g.getEdge(game.HAS_LOCATION(), game.SEEKER().ID(1)).nodeID,
-            game.TILE().ID(1,1)
+        assertEq(
+            state.getLocation(Node.Seeker(1)),
+            Node.Tile(1,1),
+            "expected seeker 1 at location 1,1"
         );
 
-        // there should be three pending tiles now at (1,2) (2,2) (2,1)
-        pendingTiles = g.getEdges(
-            game.PROVIDES_ENTROPY_TO(),
-            game.SEED().ID(uint32(block.number))
+        pendingTiles = state.getEntropyCommitments(uint32(block.number));
+        assertEq(
+            pendingTiles.length,
+            3,
+            "expected there to be 3 pending tiles after moving to tile 1,1"
         );
-        assertEq(pendingTiles.length, 3);
 
-        // attempting to move NORTHEAST again should be
-        // a noop as the tile at (2,2) is UNDISCOVERED so it is
-        // an illegal move. We don't error on such moves, we just
-        // ignore them.
+        // attempting to move NORTHEAST into an UNDISCOVERED tile
         game.getDispatcher().dispatch(
             abi.encodeCall(Actions.MOVE_SEEKER, (
                 1,                   // seeker id (sid)
                 Direction.NORTHEAST  // direction to move
             ))
         );
-        assertNodeEq(
-            g.getEdge(game.HAS_LOCATION(), game.SEEKER().ID(1)).nodeID,
-            game.TILE().ID(1,1)
+        assertEq(
+            state.getLocation(Node.Seeker(1)),
+            Node.Tile(1,1),
+            "expected seeker to not have moved onto UNDISCOVERED tile"
         );
 
         // roll time forward
@@ -224,28 +214,18 @@ contract CornSeekersTest is Test {
             ))
         );
 
-        // the tiles should now all be revealed
         for (uint i=0; i<pendingTiles.length; i++) {
-            (pendingContent,,) = game.TILE().getAttributeValues(
-                g,
-                pendingTiles[i].nodeID
-            );
+            pendingContent = state.getBiome(pendingTiles[i]);
             assertGt(
                 uint(pendingContent),
-                uint(Contents.UNDISCOVERED)
+                uint(BiomeKind.UNDISCOVERED),
+                string(abi.encodePacked("expected pending tile ",i+48, " to be discovered"))
             );
         }
 
 
         // stop being alice
         vm.stopPrank();
-    }
-
-    function assertNodeEq(NodeID a, NodeID b) internal {
-        assertEq(
-            NodeID.unwrap(a),
-            NodeID.unwrap(b)
-        );
     }
 
 }
