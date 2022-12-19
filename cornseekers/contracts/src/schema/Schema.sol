@@ -79,11 +79,11 @@ library Schema {
     }
 
     function setResourceBalance(State state, bytes12 node, ResourceKind rk, uint32 balance) internal {
-        return state.set(Rel.Balance.selector, bytes8(uint64(rk)), node, Node.Resource(rk), uint160(balance));
+        return state.set(Rel.Balance.selector, uint8(rk), node, Node.Resource(rk), uint160(balance));
     }
 
     function getResourceBalance(State state, bytes12 node, ResourceKind rk) internal view returns (uint32) {
-        (,uint160 balance) = state.get(Rel.Balance.selector, bytes8(uint64(rk)), node);
+        (,uint160 balance) = state.get(Rel.Balance.selector, uint8(rk), node);
         return uint32(balance);
     }
 
@@ -120,10 +120,10 @@ library Schema {
         // we will treat the key as an idx and iterate to find a free slot
         // this is not a very effceient solution, but is a direct port from
         // how it worked before with appendEdge
-        for (uint64 key=0; key<100; key++) {
-            (bytes12 dstNodeID,) = state.get(Rel.ProvidesEntropyTo.selector, bytes8(key), Node.Seed(blk));
+        for (uint8 key=0; key<256; key++) {
+            (bytes12 dstNodeID,) = state.get(Rel.ProvidesEntropyTo.selector, key, Node.Seed(blk));
             if (dstNodeID == bytes12(0)) {
-                return state.set(Rel.ProvidesEntropyTo.selector, bytes8(key), Node.Seed(blk), node, uint160(0));
+                return state.set(Rel.ProvidesEntropyTo.selector, key, Node.Seed(blk), node, uint160(0));
             }
         }
         revert("too many edges");
@@ -134,15 +134,15 @@ library Schema {
         // this is not a very effceient solution, but is a direct port from
         // how it worked before with appendEdge
         bytes12[100] memory foundNodes;
-        uint64 i;
-        for (i=0; i<100; i++) {
-            (foundNodes[i],) = state.get(Rel.ProvidesEntropyTo.selector, bytes8(i), Node.Seed(blk));
+        uint8 i;
+        for (i=0; i<256; i++) {
+            (foundNodes[i],) = state.get(Rel.ProvidesEntropyTo.selector, i, Node.Seed(blk));
             if (foundNodes[i] == bytes12(0)) {
                 break;
             }
         }
         bytes12[] memory nodes = new bytes12[](i);
-        for (uint j=0; j<i; j++) {
+        for (uint8 j=0; j<i; j++) {
             nodes[j] = foundNodes[j];
         }
         return nodes;
