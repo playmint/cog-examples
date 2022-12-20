@@ -33,18 +33,18 @@ contract Game is BaseGame {
         StateGraph state = new StateGraph();
 
         // register the kind ids we are using
-        state.registerNodeType(Kind.Seed.selector, "Seed", CompoundKeyKind.UINT64);
+        state.registerNodeType(Kind.Seed.selector, "Seed", CompoundKeyKind.UINT160);
         state.registerNodeType(Kind.Tile.selector, "Tile", CompoundKeyKind.UINT32_ARRAY);
-        state.registerNodeType(Kind.Resource.selector, "Resource", CompoundKeyKind.UINT64);
-        state.registerNodeType(Kind.Seeker.selector, "Seeker", CompoundKeyKind.UINT64);
+        state.registerNodeType(Kind.Resource.selector, "Resource", CompoundKeyKind.UINT160);
+        state.registerNodeType(Kind.Seeker.selector, "Seeker", CompoundKeyKind.UINT160);
 
         // register the relationship ids we are using
-        state.registerEdgeType(Rel.Owner.selector, "Owner", WeightKind.ADDRESS);
-        state.registerEdgeType(Rel.Location.selector, "Location", WeightKind.UINT160);
-        state.registerEdgeType(Rel.Balance.selector, "Balance", WeightKind.UINT160);
-        state.registerEdgeType(Rel.Biome.selector, "Biome", WeightKind.UINT160);
-        state.registerEdgeType(Rel.Strength.selector, "Strength", WeightKind.UINT160);
-        state.registerEdgeType(Rel.ProvidesEntropyTo.selector, "ProvidesEntropyTo", WeightKind.UINT160);
+        state.registerEdgeType(Rel.Owner.selector, "Owner", WeightKind.UINT64);
+        state.registerEdgeType(Rel.Location.selector, "Location", WeightKind.UINT64);
+        state.registerEdgeType(Rel.Balance.selector, "Balance", WeightKind.UINT64);
+        state.registerEdgeType(Rel.Biome.selector, "Biome", WeightKind.UINT64);
+        state.registerEdgeType(Rel.Strength.selector, "Strength", WeightKind.UINT64);
+        state.registerEdgeType(Rel.ProvidesEntropyTo.selector, "ProvidesEntropyTo", WeightKind.UINT64);
 
         // create a session router
         SessionRouter router = new SessionRouter();

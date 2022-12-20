@@ -16,10 +16,10 @@ contract HarvestRule is Rule {
         // and increases the seeker's CORN balance in their STORAGE
         if (bytes4(action) == Actions.MOVE_SEEKER.selector) {
             (uint32 sid,) = abi.decode(action[4:], (uint32, Direction));
-            bytes12 seeker = Node.Seeker(sid);
+            bytes24 seeker = Node.Seeker(sid);
 
             (uint32 x, uint32 y) = state.getLocationCoords(seeker);
-            bytes12 targetTile = Node.Tile(x,y);
+            bytes24 targetTile = Node.Tile(x,y);
             BiomeKind biome = state.getBiome(targetTile);
             if (biome == BiomeKind.CORN) {
                 // convert tile to grass

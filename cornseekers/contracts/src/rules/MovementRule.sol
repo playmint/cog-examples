@@ -22,13 +22,13 @@ contract MovementRule is Rule {
             (uint32 sid, Direction dir) = abi.decode(action[4:], (uint32, Direction));
 
             // encode the full seeker node id
-            bytes12 seeker = Node.Seeker(sid);
+            bytes24 seeker = Node.Seeker(sid);
 
             // fetch the seeker's current location
             (uint32 x, uint32 y) = state.getLocationCoords(seeker);
 
             // find new location
-            bytes12 targetTile = getTargetLocation(state, x, y, dir);
+            bytes24 targetTile = getTargetLocation(state, x, y, dir);
 
             // update seeker location
             state.setLocation(seeker, targetTile);
@@ -37,7 +37,7 @@ contract MovementRule is Rule {
         return state;
     }
 
-    function getTargetLocation(State state, uint32 x, uint32 y, Direction dir) internal view returns (bytes12) {
+    function getTargetLocation(State state, uint32 x, uint32 y, Direction dir) internal view returns (bytes24) {
         int xx = int(uint(x));
         int yy = int(uint(y));
         if (dir == Direction.NORTH) {
@@ -73,7 +73,7 @@ contract MovementRule is Rule {
         }
 
         // check where we are moving to is legit
-        bytes12 targetTile = Node.Tile(uint32(uint(xx)),uint32(uint(yy)));
+        bytes24 targetTile = Node.Tile(uint32(uint(xx)),uint32(uint(yy)));
         BiomeKind biome = state.getBiome(targetTile);
         if (biome == BiomeKind.UNDISCOVERED) {
             // illegal move, just return original tile

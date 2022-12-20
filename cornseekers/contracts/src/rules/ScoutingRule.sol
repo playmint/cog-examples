@@ -67,7 +67,7 @@ contract ScoutingRule is Rule {
             if (xx < 0 || yy < 0) {
                 continue;
             }
-            bytes12 tile = Node.Tile(uint32(uint(xx)),uint32(uint(yy)));
+            bytes24 tile = Node.Tile(uint32(uint(xx)),uint32(uint(yy)));
             BiomeKind biome = state.getBiome(tile);
             if (biome == BiomeKind.UNDISCOVERED) {
                 // commit tile contents to a future SEED
@@ -78,7 +78,7 @@ contract ScoutingRule is Rule {
     }
 
     function revealTiles(State state, uint32 blk, uint32 entropy) private returns (State) {
-        bytes12[] memory targetTiles = state.getEntropyCommitments(blk);
+        bytes24[] memory targetTiles = state.getEntropyCommitments(blk);
         for (uint i=0; i<targetTiles.length; i++) {
             (uint32 x, uint32 y) = state.getLocationCoords(targetTiles[i]);
             BiomeKind biome = state.getBiome(targetTiles[i]);

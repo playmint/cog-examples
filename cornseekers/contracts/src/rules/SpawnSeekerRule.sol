@@ -17,13 +17,13 @@ contract SpawnSeekerRule is Rule {
             (uint32 sid, uint8 x, uint8 y, uint8 str) = abi.decode(action[4:], (uint32, uint8, uint8, uint8));
 
             // build full seeker node id
-            bytes12 seeker = Node.Seeker(sid);
+            bytes24 seeker = Node.Seeker(sid);
 
             // set a strength attr for no reason
             state.setStrength( seeker, str );
 
             // set the seeker's owner relationship to the action sender
-            state.setOwner( seeker, ctx.sender );
+            state.setOwner( seeker, Node.Player(ctx.sender) );
 
             // set location by pointing a location relationship at the tile
             state.setLocation( seeker, Node.Tile(x,y) );
