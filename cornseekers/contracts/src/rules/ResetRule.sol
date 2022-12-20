@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-import "forge-std/Console2.sol";
 import { State } from "cog/State.sol";
 import { Context, Rule } from "cog/Dispatcher.sol";
 import { Actions } from "src/actions/Actions.sol";

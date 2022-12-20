@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
+import "forge-std/Console2.sol";
 
 import {
     State,
-    EdgeData,
-    Attr
+    CompoundKeyEncoder,
+    CompoundKeyDecoder
 } from "cog/State.sol";
 
 interface Rel {
@@ -37,16 +38,16 @@ enum BiomeKind {
 
 library Node {
     function Seeker(uint64 id) internal pure returns (bytes12) {
-        return bytes12(abi.encodePacked(Kind.Seeker.selector, id));
+        return CompoundKeyEncoder.UINT64(Kind.Seeker.selector, id);
     }
     function Tile(uint32 x, uint32 y) internal pure returns (bytes12) {
-        return bytes12(abi.encodePacked(Kind.Tile.selector, x, y));
+        return CompoundKeyEncoder.UINT32_ARRAY(Kind.Tile.selector, [x, y]);
     }
     function Resource(ResourceKind rk) internal pure returns (bytes12) {
-        return bytes12(abi.encodePacked(Kind.Resource.selector, uint64(rk)));
+        return CompoundKeyEncoder.UINT64(Kind.Resource.selector, uint64(rk));
     }
     function Seed(uint32 blk) internal pure returns (bytes12) {
-        return bytes12(abi.encodePacked(Kind.Seed.selector, uint64(blk)));
+        return CompoundKeyEncoder.UINT64(Kind.Seed.selector, blk);
     }
 }
 
@@ -65,12 +66,12 @@ library Schema {
 
     function getLocationCoords(State state, bytes12 node) internal view returns (uint32 x, uint32 y) {
         bytes12 tile = getLocation(state, node);
-        x = uint32(uint96(tile) >> 32);
-        y = uint32(uint96(tile));
+        uint32[2] memory keys = CompoundKeyDecoder.UINT32_ARRAY(tile);
+        return (keys[0], keys[1]);
     }
 
     function setBiome(State state, bytes12 node, BiomeKind biome) internal {
-        return state.set(Rel.Biome.selector, 0x0, node, Attr.UInt(), uint160(biome));
+        return state.set(Rel.Biome.selector, 0x0, node, 0x0, uint160(biome));
     }
 
     function getBiome(State state, bytes12 node) internal view returns (BiomeKind) {
@@ -92,7 +93,7 @@ library Schema {
     }
 
     function setOwner(State state, bytes12 node, address ownerAddr) internal {
-        return state.set(Rel.Owner.selector, 0x0, node, Attr.Address(), uint160(ownerAddr));
+        return state.set(Rel.Owner.selector, 0x0, node, bytes12(0), uint160(ownerAddr));
     }
 
     function getOwner(State state, bytes12 node) internal view returns (bytes12, uint160) {
@@ -108,7 +109,7 @@ library Schema {
     }
 
     function setStrength(State state, bytes12 node, uint64 v) internal {
-        return state.set(Rel.Strength.selector, 0x0, node, Attr.Int(), uint160(v));
+        return state.set(Rel.Strength.selector, 0x0, node, 0x0, uint160(v));
     }
 
     function getStrength(State state, bytes12 node) internal view returns (uint64) {
@@ -135,7 +136,7 @@ library Schema {
         // how it worked before with appendEdge
         bytes12[100] memory foundNodes;
         uint8 i;
-        for (i=0; i<256; i++) {
+        for (i=0; i<255; i++) {
             (foundNodes[i],) = state.get(Rel.ProvidesEntropyTo.selector, i, Node.Seed(blk));
             if (foundNodes[i] == bytes12(0)) {
                 break;

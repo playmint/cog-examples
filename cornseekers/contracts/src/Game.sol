@@ -4,7 +4,7 @@ pragma solidity ^0.8.13;
 import { BaseGame } from "cog/Game.sol";
 import { BaseDispatcher } from "cog/Dispatcher.sol";
 import { SessionRouter } from "cog/SessionRouter.sol";
-import { StateGraph } from "cog/StateGraph.sol";
+import { StateGraph, CompoundKeyKind, WeightKind } from "cog/StateGraph.sol";
 
 import { HarvestRule } from "src/rules/HarvestRule.sol";
 import { ScoutingRule } from "src/rules/ScoutingRule.sol";
@@ -33,18 +33,18 @@ contract Game is BaseGame {
         StateGraph state = new StateGraph();
 
         // register the kind ids we are using
-        state.registerNodeType(Kind.Seed.selector, "Seed");
-        state.registerNodeType(Kind.Tile.selector, "Tile");
-        state.registerNodeType(Kind.Resource.selector, "Resource");
-        state.registerNodeType(Kind.Seeker.selector, "Seeker");
+        state.registerNodeType(Kind.Seed.selector, "Seed", CompoundKeyKind.UINT64);
+        state.registerNodeType(Kind.Tile.selector, "Tile", CompoundKeyKind.UINT32_ARRAY);
+        state.registerNodeType(Kind.Resource.selector, "Resource", CompoundKeyKind.UINT64);
+        state.registerNodeType(Kind.Seeker.selector, "Seeker", CompoundKeyKind.UINT64);
 
         // register the relationship ids we are using
-        state.registerEdgeType(Rel.Owner.selector, "Owner");
-        state.registerEdgeType(Rel.Location.selector, "Location");
-        state.registerEdgeType(Rel.Balance.selector, "Balance");
-        state.registerEdgeType(Rel.Biome.selector, "Biome");
-        state.registerEdgeType(Rel.Strength.selector, "Strength");
-        state.registerEdgeType(Rel.ProvidesEntropyTo.selector, "ProvidesEntropyTo");
+        state.registerEdgeType(Rel.Owner.selector, "Owner", WeightKind.ADDRESS);
+        state.registerEdgeType(Rel.Location.selector, "Location", WeightKind.UINT160);
+        state.registerEdgeType(Rel.Balance.selector, "Balance", WeightKind.UINT160);
+        state.registerEdgeType(Rel.Biome.selector, "Biome", WeightKind.UINT160);
+        state.registerEdgeType(Rel.Strength.selector, "Strength", WeightKind.UINT160);
+        state.registerEdgeType(Rel.ProvidesEntropyTo.selector, "ProvidesEntropyTo", WeightKind.UINT160);
 
         // create a session router
         SessionRouter router = new SessionRouter();
