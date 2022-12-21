@@ -112,7 +112,7 @@ library Schema {
     }
 
     function getStrength(State state, bytes24 node) internal view returns (uint64) {
-        (,uint160 str) = state.get(Rel.Strength.selector, 0x0, node);
+        (,uint64 str) = state.get(Rel.Strength.selector, 0x0, node);
         return uint64(str);
     }
 

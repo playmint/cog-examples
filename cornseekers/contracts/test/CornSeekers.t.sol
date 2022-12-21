@@ -135,7 +135,7 @@ contract CornSeekersTest is Test {
             "expect seeker to have a location"
         );
 
-        bytes12[] memory pendingTiles = state.getEntropyCommitments(uint32(block.number));
+        bytes24[] memory pendingTiles = state.getEntropyCommitments(uint32(block.number));
         assertEq(
             pendingTiles.length,
             1,

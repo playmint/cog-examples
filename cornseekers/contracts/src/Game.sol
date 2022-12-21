@@ -37,6 +37,7 @@ contract Game is BaseGame {
         state.registerNodeType(Kind.Tile.selector, "Tile", CompoundKeyKind.UINT32_ARRAY);
         state.registerNodeType(Kind.Resource.selector, "Resource", CompoundKeyKind.UINT160);
         state.registerNodeType(Kind.Seeker.selector, "Seeker", CompoundKeyKind.UINT160);
+        state.registerNodeType(Kind.Player.selector, "Player", CompoundKeyKind.ADDRESS);
 
         // register the relationship ids we are using
         state.registerEdgeType(Rel.Owner.selector, "Owner", WeightKind.UINT64);

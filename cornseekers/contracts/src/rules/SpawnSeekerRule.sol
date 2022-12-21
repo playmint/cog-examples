@@ -4,7 +4,7 @@ pragma solidity ^0.8.13;
 import { State } from "cog/State.sol";
 import { Context, Rule } from "cog/Dispatcher.sol";
 import { Actions } from "src/actions/Actions.sol";
-import { Schema, Node } from "src/schema/Schema.sol";
+import { Schema, Node, ResourceKind } from "src/schema/Schema.sol";
 
 using Schema for State;
 
@@ -27,6 +27,9 @@ contract SpawnSeekerRule is Rule {
 
             // set location by pointing a location relationship at the tile
             state.setLocation( seeker, Node.Tile(x,y) );
+
+            // start with 0 corn
+            state.setResourceBalance(Node.Seeker(sid), ResourceKind.CORN, 0);
         }
         return state;
     }
