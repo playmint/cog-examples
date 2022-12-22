@@ -66,21 +66,21 @@ contract CornSeekersTest is Test {
             "expected seeker's CORN resource balance to start at zero"
         );
 
-        // hack in CORN at tile (1,1) to bypass scouting
-        state.setBiome( Node.Tile(1,1), BiomeKind.CORN );
+        // hack in CORN at tile (0,1) to bypass scouting
+        state.setBiome( Node.Tile(0,1), BiomeKind.CORN );
 
-        // move the seeker NORTHEAST to tile (1,1)
+        // move the seeker NORTH to tile (0,1)
         game.getDispatcher().dispatch(
             abi.encodeCall(Actions.MOVE_SEEKER, (
                 1,                   // seeker id (sid)
-                Direction.NORTHEAST  // direction to move
+                Direction.NORTH      // direction to move
             ))
         );
 
         // comfirm seeker is now at tile (1,1)
         assertEq(
             state.getLocation(Node.Seeker(1)),
-            Node.Tile(1,1),
+            Node.Tile(0,1),
             "expected seeker 1 at tile 1,1"
         );
 
@@ -169,37 +169,37 @@ contract CornSeekersTest is Test {
             "the pending tile sholud now be discovered"
         );
 
-        // move the seeker NORTHEAST
+        // move the seeker NORTH
         game.getDispatcher().dispatch(
             abi.encodeCall(Actions.MOVE_SEEKER, (
                 1,                   // seeker id (sid)
-                Direction.NORTHEAST  // direction to move
+                Direction.NORTH      // direction to move
             ))
         );
 
         assertEq(
             state.getLocation(Node.Seeker(1)),
-            Node.Tile(1,1),
-            "expected seeker 1 at location 1,1"
+            Node.Tile(0,1),
+            "expected seeker 1 at location 0,1"
         );
 
         pendingTiles = state.getEntropyCommitments(uint32(block.number));
         assertEq(
             pendingTiles.length,
-            3,
-            "expected there to be 3 pending tiles after moving to tile 1,1"
+            1,
+            "expected there to be 3 pending tiles after moving to tile 0,1"
         );
 
-        // attempting to move NORTHEAST into an UNDISCOVERED tile
+        // attempting to move EAST into an UNDISCOVERED tile
         game.getDispatcher().dispatch(
             abi.encodeCall(Actions.MOVE_SEEKER, (
                 1,                   // seeker id (sid)
-                Direction.NORTHEAST  // direction to move
+                Direction.EAST       // direction to move
             ))
         );
         assertEq(
             state.getLocation(Node.Seeker(1)),
-            Node.Tile(1,1),
+            Node.Tile(0,1),
             "expected seeker to not have moved onto UNDISCOVERED tile"
         );
 

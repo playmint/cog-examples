@@ -75,7 +75,7 @@ contract MovementRule is Rule {
         // check where we are moving to is legit
         bytes24 targetTile = Node.Tile(uint32(uint(xx)),uint32(uint(yy)));
         BiomeKind biome = state.getBiome(targetTile);
-        if (biome == BiomeKind.UNDISCOVERED) {
+        if (biome == BiomeKind.UNDISCOVERED || biome == BiomeKind.BLOCKER) {
             // illegal move, just return original tile
             // revert(string(abi.encodePacked("tile x=",x+48, " y=", y+48, " is UNDISCOVERED")));
             return Node.Tile(x, y);

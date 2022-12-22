@@ -85,19 +85,21 @@ contract ScoutingRule is Rule {
             if (biome != BiomeKind.UNDISCOVERED) {
                 continue;
             }
-            uint8 r = random(entropy, x, y);
-            if (r > 90) {
+            uint8 r = random(entropy, x, y, i);
+            if (r > 200) {
                 biome = BiomeKind.CORN;
-            } else {
+            } else if (r > 50) {
                 biome = BiomeKind.GRASS;
+            } else {
+                biome = BiomeKind.BLOCKER;
             }
             state.setBiome( targetTiles[i], biome );
         }
         return state;
     }
 
-    function random(uint32 entropy, uint32 x, uint32 y) public pure returns(uint8){
-        return uint8(uint( keccak256(abi.encodePacked(x, y, entropy)) ) % 255);
+    function random(uint32 entropy, uint32 x, uint32 y, uint i) public pure returns(uint8){
+        return uint8(uint( keccak256(abi.encodePacked(x, y, entropy, i)) ) % 255);
     }
 
 }
