@@ -57,7 +57,7 @@ contract ScoutingRule is Rule {
                 xx = x;
                 yy = y-1;
             } else if (i == 6) {
-                xx = x-1;
+                xx = x+1;
                 yy = y-1;
             } else if (i == 7) {
                 xx = x-1;
@@ -65,6 +65,9 @@ contract ScoutingRule is Rule {
             }
 
             if (xx < 0 || yy < 0) {
+                continue;
+            }
+            if (xx > 31 || yy > 31) {
                 continue;
             }
             bytes24 tile = Node.Tile(uint32(uint(xx)),uint32(uint(yy)));
@@ -86,7 +89,7 @@ contract ScoutingRule is Rule {
                 continue;
             }
             uint8 r = random(entropy, x, y, i);
-            if (r > 200) {
+            if (r > 220) {
                 biome = BiomeKind.CORN;
             } else if (r > 50) {
                 biome = BiomeKind.GRASS;
