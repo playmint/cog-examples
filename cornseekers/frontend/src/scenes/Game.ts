@@ -17,6 +17,22 @@ import * as ethers from "ethers";
 // * [x] clear session button
 // * [x] spawn button
 // * [x] multiplayer
+// * [x] leaderboard
+// * [ ] show players pending move actions
+// * [x] fix api to debounce state subscriptions
+// * [x] fix contract bug where it attempts to scout outside the play area
+// * [x] fix contract bug where it fails to scout SOUTHWEST corners? - probably off-by-one error somewhere
+// * [x] fix allowing move into the menu area
+// * [x] handle various metamask states / switch account
+// * [ ] fix RESET_MAP doesn't really work
+//          - need to delete the ProvidesEntropy edges else it just unauto discovers itself again after reset (hard - we dont have a state.remove)
+//          - and need to move seekers to the edges (hard - we cant iterate seekers on-chain easily)
+//          - might be easier to add a concept of ZONES and allow seekers to move between zones
+// * [ ] deploy it somewhere so we can play (anvil is fine, testnet would be cool but prob too much like work)
+
+
+const COG_WS_ENDPOINT = import.meta.env.VITE_COG_WS_ENDPOINT || 'ws://localhost:8080/query';
+const COG_HTTP_ENDPOINT = import.meta.env.VITE_COG_HTTP_ENDPOINT || 'http://localhost:8080/query';
 
 const STATE_FRAGMENT = `
     block
@@ -75,7 +91,7 @@ const SIGNIN = gql(`
         signin(
             gameID: $gameID,
             session: $session,
-            ttl: 1000,
+            ttl: 9999,
             scope: "0xffffffff",
             authorization: $auth,
         )
@@ -107,6 +123,8 @@ enum Direction {
     NORTHWEST
 }
 
+const seekers: any = {};
+
 export default class Demo extends Phaser.Scene {
 
     constructor() {
@@ -125,11 +143,11 @@ export default class Demo extends Phaser.Scene {
 
         // setup the client
         const httpLink = new HttpLink({
-            uri: 'http://localhost:8080/query'
+            uri: COG_HTTP_ENDPOINT,
         });
         const wsLink = new GraphQLWsLink(
             createClient({
-                url: "ws://localhost:8080/query",
+                url: COG_WS_ENDPOINT
             }),
         );
         const link = split(
@@ -145,15 +163,32 @@ export default class Demo extends Phaser.Scene {
         );
         const client = new ApolloClient({
             link,
-            uri: 'http://localhost:8080/query',
+            uri: COG_HTTP_ENDPOINT,
             cache: new InMemoryCache(),
         });
 
 
         // setup wallet providers etc
-        const provider = new ethers.providers.Web3Provider((window as any).ethereum)
+        const ethereum = (window as any).ethereum;
+        if (!ethereum) {
+            scene.add.text(100, 100, 'No wallet detected, you need metamask.', { fontSize: '18px' });
+            return;
+        }
+        ethereum.on('accountsChanged', () => {
+            console.log('metamask account changed, refreshing...');
+            localStorage.clear();
+            setTimeout(() => {
+                window.location.reload();
+            }, 500);
+        });
+        const provider = new ethers.providers.Web3Provider(ethereum)
         const owner = provider.getSigner();
-        await provider.send("eth_requestAccounts", [])
+        try {
+            await provider.send("eth_requestAccounts", [])
+        } catch {
+            scene.add.text(100, 100, 'You must connect your wallet. Refresh to try again', { fontSize: '18px' });
+            return;
+        }
         const ownerAddr = await owner.getAddress();
         if (localStorage.getItem('ownerAddr') != ownerAddr) {
             localStorage.clear();
@@ -165,7 +200,7 @@ export default class Demo extends Phaser.Scene {
         let sessionKey = localStorage.getItem('sessionKey');
         if (sessionKey) {
             session = new ethers.Wallet(sessionKey);
-            console.log('using session key from localstorage', session.privateKey);
+            console.log('using session key from localstorage', session.address);
         } else {
             session = ethers.Wallet.createRandom();
             sessionKey = session.privateKey;
@@ -179,12 +214,19 @@ export default class Demo extends Phaser.Scene {
                 return client.mutate({mutation: SIGNIN, variables: {gameID, auth, session: session.address}});
             }
             // signin with metamask, sign the session key, and save the key for later if success
-            await signin();
+            const note = scene.add.text(100, 100, 'Check metamask popup for login...', { fontSize: '18px' });
+            try {
+                await signin();
+            } catch {
+                scene.add.text(100, 100, 'You must sign in to play. Refresh to try again', { fontSize: '18px' });
+                return;
+            } finally {
+                note.destroy();
+            }
             localStorage.setItem('sessionKey', ethers.utils.hexlify(session.privateKey));
         }
 
         // keep track of seeker owners/sprites
-        const seekers:any = {};
         const getPlayerSeeker = () => {
             for (let k in seekers) {
                 if (seekers[k].owner == ownerAddr) {
@@ -208,36 +250,82 @@ export default class Demo extends Phaser.Scene {
         // plonk dispatch on window so we can call it from the console
         (window as any).dispatch = dispatch;
 
+        // helper to map biomes to tile map index
+        const UNDISCOVERED_GRASS = 66;
+        const BLOCKING_GRASS = 62;
+        const PASSABLE_GRASS = 5;
+        const grassType = (i:number, seed:number): number => {
+            switch (i) {
+                case null: return 1;
+                case BiomeKind.UNDISCOVERED: return UNDISCOVERED_GRASS;
+                case BiomeKind.BLOCKER: return BLOCKING_GRASS;
+                case BiomeKind.GRASS: return PASSABLE_GRASS;
+                case BiomeKind.CORN: return PASSABLE_GRASS;
+                default: throw new Error(`unknown kind=${i}`);
+            }
+        }
+
         // init the map
-        const data = Array(32).fill(Array(48).fill(7));
+        const data = Array(32).fill(Array(44).fill(0));
         const map = scene.make.tilemap({ data, tileWidth: 16, tileHeight: 16, width: 64, height: 64 });
         const landTiles = map.addTilesetImage('tiles', undefined, 16, 16, 0, 1);
-        const baseLayer = map.createBlankLayer('base', landTiles, 0, 0);
-        const resourcesLayer = map.createBlankLayer('resources', landTiles, 0, 0);
+        const baseLayer = map.createBlankLayer('base', landTiles, 0, 0).setPipeline('Light2D');
+        const resourcesLayer = map.createBlankLayer('resources', landTiles, 0, 0).setPipeline('Light2D');
+        map.fill(BLOCKING_GRASS, 0, 0, 48,32, undefined, baseLayer);
+
+        // bit of lighting to highlight player
+        const light = this.lights.addLight(0, 0, 50).setIntensity(0.15);
+        this.lights.enable().setAmbientColor(0xfafafa);
 
         // UI
-        const playerBalance = this.add.text(600, 200, '', { fontFamily: 'system', color: '#000000' });
-        const help = this.add.text(600, 400, 'use WASD to move', { fontFamily: 'system', color: '#000000', fontSize: '11px' });
-        const buttonStyle = {
+        const sideBarDefaults = {
+            fixedWidth: 150,
+            align: 'justify',
             fontFamily: 'system',
-            color: '#efefef',
-            backgroundColor: '#555555',
+            color: '#699625',
+        };
+        const lhs = 536;
+        const title = scene.add.text(lhs, 16, 'CORNSEEKERS', { fontSize: '18px', ...sideBarDefaults });
+        const playerTitle = scene.add.text(lhs, 125, 'PLAYER', { ...sideBarDefaults, fontSize: '12px' });
+        const playerName = scene.add.text(lhs, 140, `Owner: ${ownerAddr.slice(0,16)}`, { ...sideBarDefaults, fontSize: '10px' });
+        const playerBalance = scene.add.text(lhs, 155, '', { ...sideBarDefaults, fontSize: '10px' });
+        const leaderboardTitle = scene.add.text(lhs, 200, 'LEADERBOARD', { ...sideBarDefaults, fontSize: '12px' });
+        const leaders = Array(8).fill(null).map((_, i) => {
+            return scene.add.text(lhs, 220+(i*15), `${i+1} ---`, { ...sideBarDefaults, fontSize: '10px' })
+        });
+        const help = scene.add.text(lhs, 40, [
+            `USE W,A,S,D TO MOVE YOUR`,
+            `SEEKER. STAND NEAR AN `,
+            `UNDISCOVERED AREA TO SCOUT`,
+            `WHAT IS INSIDE THE AREA.`,
+            `COLLECT CORN BY STANDING `,
+            `ON A CORN TILE`,
+        ], { fontSize: '9px', ...sideBarDefaults });
+        const buttonStyle = {
+            ...sideBarDefaults,
+            fontSize: '8px',
+            color: '#acee44',
+            backgroundColor: '#699625',
             padding: {x: 5, y: 5},
         };
-        const resetButton = this.add.text(600, 10, 'RESET MAP', buttonStyle)
+        const resetButton = scene.add.text(lhs, 420, 'INIT MAP', buttonStyle)
             .setInteractive()
             .on('pointerup', () => {
+                const ans = prompt("Initialize the map.\n\nThis should only be done once, it will act a bit weird if you do it do an already running game.\n\nType 'yes' to do it anyway.");
+                if (ans != "yes") {
+                    return;
+                }
                 // reset the map
                 dispatch('RESET_MAP')
             });
-        const signoutButton = this.add.text(600, 40, 'CLEAR SESSION', buttonStyle)
+        const signoutButton = scene.add.text(lhs, 448, 'CLEAR SESSION', buttonStyle)
             .setInteractive()
             .on('pointerup', () => {
                 // reset the map
                 localStorage.clear();
                 (window as any).location.reload();
             });
-        const spawnButton = this.add.text(600, 70, 'SPAWN SEEKER', buttonStyle)
+        const spawnButton = scene.add.text(lhs, 475, 'SPAWN SEEKER', buttonStyle)
             .setInteractive()
             .on('pointerup', () => {
                 if (getPlayerSeeker()) {
@@ -248,9 +336,8 @@ export default class Demo extends Phaser.Scene {
                 dispatch('SPAWN_SEEKER', Object.keys(seekers).length+2, Math.floor(Math.random()*32), 0, 1)
             });
 
-        // highlight the selected seeker
-        // and allow moving the hightlight like a cursor that eventully
-        // snaps back to the real location
+        // highlight the selected seeker and allow moving the hightlight like a
+        // cursor that eventully snaps back to the real location
         const marker = this.add.graphics()
             .lineStyle(1, 0xFFFFFF, 0.3)
             .strokeRect(0, 0, map.tileWidth, map.tileHeight);
@@ -274,18 +361,6 @@ export default class Demo extends Phaser.Scene {
             return Math.abs(x - (marker.x/map.tileWidth)) < 4 && Math.abs(y - (marker.y/map.tileHeight)) < 4;
         }
 
-        // helper to map biomes to tile map index
-        const biomeToIdx = (i:number, seed:number): number => {
-            switch (i) {
-                case null: return 1;
-                case BiomeKind.UNDISCOVERED: return 6;
-                case BiomeKind.BLOCKER: return 64;
-                case BiomeKind.GRASS: return [5, 62, 66][seed % 3];
-                case BiomeKind.CORN: return 5;
-                default: throw new Error(`unknown kind=${i}`);
-            }
-        }
-
         // helper to map a seeker id to a char sprite
         const charIdx = (key:string): number => {
             const id = BigNumber.from(key).toNumber();
@@ -299,71 +374,176 @@ export default class Demo extends Phaser.Scene {
             if (!state) {
                 return;
             }
+            const undiscovered = [] as any;
 
             // draw the map
             state.tiles.forEach((tile: any) => {
                 const x = BigNumber.from(tile.coords[0]).toNumber();
                 const y = BigNumber.from(tile.coords[1]).toNumber();
                 const blk = BigNumber.from(tile.seed?.key || 0).toNumber();
-                const biomeIdx = biomeToIdx(tile.biome, blk);
-                map.putTileAt(biomeIdx, x, y, undefined, baseLayer);
+                // we use different types of grass to denode passable/blocking
+                const grass = grassType(tile.biome, blk+x+y);
+                map.putTileAt(grass, x, y, undefined, baseLayer);
+                // then we place something pretty on top to make the tile distinct
                 if (tile.biome === BiomeKind.CORN) {
-                    map.putTileAt(15, x, y, undefined, resourcesLayer);
+                    const corn = 15;
+                    map.putTileAt(corn, x, y, undefined, resourcesLayer);
+                } else if (tile.biome == BiomeKind.BLOCKER) {
+                    const tree = [526,592,649,526,526][(blk+x+y) % 5];
+                    map.putTileAt(tree, x, y, undefined, resourcesLayer);
+                } else if (tile.biome == BiomeKind.UNDISCOVERED) {
+                    undiscovered.push({x,y});
                 } else {
                     map.removeTileAt(x, y, undefined, undefined, resourcesLayer);
                 }
                 // resolve any nearby pending tiles that needs resolving
-                if (tile.seed && tile.biome == BiomeKind.UNDISCOVERED && isNearPlayer(x,y)) {
-                    // generate some randomness ... obvisouly letting the
-                    // client decide random is bad - this is just a toy
-                    const entropy = Math.floor(Math.random()*1000);
-                    if (!revealing[blk]) {
-                        revealing[blk] = true;
-                        dispatch("REVEAL_SEED", blk, entropy)
-                            .catch((err) => console.error(`REVEAL_SEED ${blk} ${entropy} fail`, err));
+                if (tile.seed && tile.biome == BiomeKind.UNDISCOVERED) {
+                    // resolve if nearby
+                    if (isNearPlayer(x,y)) {
+                        // hint this tile is pending
+                        map.putTileAt(BLOCKING_GRASS, x, y, undefined, baseLayer);
+                        if (!revealing[`${x}-${y}`]) {
+                            // generate some randomness ... obvisouly letting the
+                            // client decide random is bad - this is just a toy
+                            const entropy = Math.floor(Math.random()*1000);
+                            // start reveal
+                            revealing[`${x}-${y}`] = true;
+                            dispatch("REVEAL_SEED", blk, entropy)
+                                .catch((err) => console.error(`REVEAL_SEED ${blk} ${entropy} fail`, err));
+                        }
                     }
                 }
             });
 
+            // prettify the undiscovered area
+            undiscovered.forEach(({x,y}: any) => {
+                const tile = map.getTileAt(x,y, undefined, baseLayer);
+                const tileAbove = map.getTileAt(x,y-1, undefined, baseLayer)?.index !== UNDISCOVERED_GRASS;
+                const tileBelow = map.getTileAt(x,y+1, undefined, baseLayer)?.index !== UNDISCOVERED_GRASS;
+                const tileLeft = map.getTileAt(x-1,y, undefined, baseLayer)?.index !== UNDISCOVERED_GRASS;
+                const tileRight = map.getTileAt(x+1,y, undefined, baseLayer)?.index !== UNDISCOVERED_GRASS;
+                const isRevealing = revealing[`${x}-${y}`];
+                const prettyTile = () => {
+                    if (tileAbove && tileBelow && tileLeft && tileRight) {
+                        return 692;
+                    } else if (tileAbove  && tileBelow  && tileLeft ) {
+                        return 690;
+                    } else if (tileAbove  && tileBelow  && tileRight ) {
+                        return 689;
+                    } else if (tileBelow  && tileLeft  && tileRight ) {
+                        return 632;
+                    } else if (tileAbove  && tileLeft  && tileRight ) {
+                        return 633;
+                    } else if (tileAbove  && tileLeft ) {
+                        return 520;
+                    } else if (tileAbove  && tileRight ) {
+                        return 522;
+                    } else if (tileBelow  && tileLeft ) {
+                        return 634;
+                    } else if (tileBelow  && tileRight ) {
+                        return 636;
+                    } else if (tileLeft  && tileRight ) {
+                       return 408;
+                    } else if (tileAbove ) {
+                        return 521;
+                    } else if (tileBelow ) {
+                        return 635;
+                    } else if (tileLeft ) {
+                        return 577;
+                    } else if (tileRight ) {
+                        return 579;
+                    } else {
+                        return 578;
+                    }
+                }
+                map.putTileAt(isRevealing ? 1376 : prettyTile(), x, y, undefined, resourcesLayer);
+            })
+
+            // update the seeker locations on the map
+            // this is a bit verbose as we animate the movement, ultimately we
+            // are simply reading which tile the seeker is positioned at and translating
+            // that into the px locations
             state.seekers.forEach((seeker: any) => {
-                // position the seekers
+                // find the position of the seekers
                 const x = BigNumber.from(seeker.position.coords[0]).toNumber();
                 const y = BigNumber.from(seeker.position.coords[1]).toNumber();
+                const sx = 16*x+8;
+                const sy = 16*y+8;
+                const owner = ethers.utils.getAddress(seeker.player.address);
+                const isPlayerSeeker = owner == ownerAddr;
                 if (!seekers[seeker.key]) {
+                    const sprite = scene.add.image(16,16,'chars', charIdx(seeker.key));
+                    const targets = isPlayerSeeker ? [sprite, light] : [sprite];
+                    const tween = scene.tweens.add({
+                        targets,
+                        x: sx,
+                        y: sy,
+                        duration: 500,
+                        ease: 'Power2',
+                        paused: false,
+                    });
+                    sprite.x = sx;
+                    sprite.y = sy;
+                    if (isPlayerSeeker) {
+                        light.x = sprite.x;
+                        light.y = sprite.y;
+                    }
                     seekers[seeker.key] = {
-                        sprite: scene.add.image(16,16,'chars', charIdx(seeker.key)),
-                        owner: ethers.utils.getAddress(seeker.player.address),
+                        sprite,
+                        tween,
+                        owner,
                     };
                 }
-                const {sprite,owner} = seekers[seeker.key];
-                const isPlayerSeeker = owner == ownerAddr;
-                sprite.x = 16*x+8;
-                sprite.y = 16*y+8;
-                // update player
+                const {sprite,tween} = seekers[seeker.key];
+                if (sprite.x != sx || sprite.y != sy) {
+                    if (tween.isPlaying()) {
+                        tween.updateTo('x', sx, true);
+                        tween.updateTo('y', sy, true);
+                    }else{
+                        const targets = isPlayerSeeker ? [sprite,light] : [sprite];
+                        seekers[seeker.key].tween = scene.tweens.add({
+                            targets,
+                            x: sx,
+                            y: sy,
+                            duration: 500,
+                            ease: 'Power2',
+                            paused: false,
+                        });
+                    }
+                }
+                // update player's sidebar stats info
                 if (isPlayerSeeker) {
                     // score
-                    playerBalance.setText(`CORN: ${seeker.cornBalance}`);
+                    playerBalance.setText(`Corn collected: ${seeker.cornBalance}`);
                     // highlight the player's seeker
                     markerRealPos = [16*x,16*y];
                     updateMarker();
                 }
             });
 
+            // update the leaderboard
+            [...state.seekers].sort((a:any,b:any) => {
+                return b.cornBalance - a.cornBalance;
+            }).forEach((seeker:any, i:number) => {
+                if (i > leaders.length-1) {
+                    return;
+                }
+                leaders[i].setText(`${i+1} - ${seeker.player.address.slice(0, 16)} - ${seeker.cornBalance} corns`);
+            });
+
+
         }
 
         // helper to check if a tile is passable
         const isBlocker = (idx:number):boolean => {
-            if (idx === 6 || idx === 64 || idx === 0) {
-                return true;
-            }
-            return false;
+            return idx !== PASSABLE_GRASS;
         };
 
         //  dispatch MOVE_SEEKER on WASD movement
         const move = (dir: Direction) => async () => {
             const id = getPlayerSeeker();
             if (!id) {
-                console.log('you have no seeker or not connected metamask');
+                alert("You have no seeker.\n\n Click spawn seeker to start.");
                 return;
             }
             lastMoveAt = Date.now();
