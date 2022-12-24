@@ -63,6 +63,15 @@ const STATE_SUBSCRIPTION = gql(`
     }
 `);
 
+const TX_SUBSCRIPTION = gql(`
+    subscription OnTx($owner: String!) {
+        transaction(gameID: "latest", owner: $owner) {
+            id
+            status
+        }
+    }
+`);
+
 const STATE_QUERY = gql(`
     query GetState {
         game(id: "latest") {
@@ -230,7 +239,7 @@ export default class Demo extends Phaser.Scene {
         const getPlayerSeeker = () => {
             for (let k in seekers) {
                 if (seekers[k].owner == ownerAddr) {
-                    return k;
+                    return seekers[k];
                 }
             }
             return null;
@@ -243,8 +252,10 @@ export default class Demo extends Phaser.Scene {
             const actionDigest = ethers.utils.arrayify(ethers.utils.keccak256(action));
             const auth = await session.signMessage(actionDigest);
             return client.mutate({mutation: DISPATCH, variables: {gameID, auth, action}})
-                .then(() => console.log('dispatched', actionName))
-                .catch((err) => console.log('dispatch fail:', err));
+                .then((res) => {
+                    console.log('dispatched', actionName)
+                    return res.data.dispatch;
+                });
         }
 
         // plonk dispatch on window so we can call it from the console
@@ -281,7 +292,7 @@ export default class Demo extends Phaser.Scene {
         const sideBarDefaults = {
             fixedWidth: 150,
             align: 'justify',
-            fontFamily: 'system',
+            fontFamily: 'courier',
             color: '#699625',
         };
         const lhs = 536;
@@ -329,36 +340,24 @@ export default class Demo extends Phaser.Scene {
             .setInteractive()
             .on('pointerup', () => {
                 if (getPlayerSeeker()) {
-                    console.log('you already have a seeker');
+                    alert('Sorry, you already have a seeker!');
                     return;
                 }
                 // spawn a seeker at a random location along the top edge
                 dispatch('SPAWN_SEEKER', Object.keys(seekers).length+2, Math.floor(Math.random()*32), 0, 1)
             });
 
-        // highlight the selected seeker and allow moving the hightlight like a
-        // cursor that eventully snaps back to the real location
-        const marker = this.add.graphics()
-            .lineStyle(1, 0xFFFFFF, 0.3)
-            .strokeRect(0, 0, map.tileWidth, map.tileHeight);
-        let markerRealPos = [0,0];
-        let lastMoveAt = Date.now()-1000;
-        const updateMarker = () => {
-            const timeSinceLastMove = Date.now() - lastMoveAt;
-            if (timeSinceLastMove < 500) {
-                return;
-            }
-            marker.x = markerRealPos[0];
-            marker.y = markerRealPos[1];
-        }
-        setInterval(updateMarker, 3000);
-
         // keep track of things we are trying to reveal
         const revealing = {} as any;
 
         // helper to check if a coord is "near" the player selection
         const isNearPlayer = (x:number,y:number):boolean => {
-            return Math.abs(x - (marker.x/map.tileWidth)) < 4 && Math.abs(y - (marker.y/map.tileHeight)) < 4;
+            const seeker = getPlayerSeeker();
+            if (!seeker) {
+                return false;
+            }
+            return Math.abs(x - (seeker.sprite.x/map.tileWidth)) < 4
+                && Math.abs(y - (seeker.sprite.y/map.tileHeight)) < 4;
         }
 
         // helper to map a seeker id to a char sprite
@@ -381,7 +380,7 @@ export default class Demo extends Phaser.Scene {
                 const x = BigNumber.from(tile.coords[0]).toNumber();
                 const y = BigNumber.from(tile.coords[1]).toNumber();
                 const blk = BigNumber.from(tile.seed?.key || 0).toNumber();
-                // we use different types of grass to denode passable/blocking
+                // we use different types of grass to indicate passable/blocking
                 const grass = grassType(tile.biome, blk+x+y);
                 map.putTileAt(grass, x, y, undefined, baseLayer);
                 // then we place something pretty on top to make the tile distinct
@@ -469,6 +468,9 @@ export default class Demo extends Phaser.Scene {
                 const y = BigNumber.from(seeker.position.coords[1]).toNumber();
                 const sx = 16*x+8;
                 const sy = 16*y+8;
+                if (!seeker.player) {
+                    return;
+                }
                 const owner = ethers.utils.getAddress(seeker.player.address);
                 const isPlayerSeeker = owner == ownerAddr;
                 if (!seekers[seeker.key]) {
@@ -489,6 +491,7 @@ export default class Demo extends Phaser.Scene {
                         light.y = sprite.y;
                     }
                     seekers[seeker.key] = {
+                        key: seeker.key,
                         sprite,
                         tween,
                         owner,
@@ -515,9 +518,6 @@ export default class Demo extends Phaser.Scene {
                 if (isPlayerSeeker) {
                     // score
                     playerBalance.setText(`Corn collected: ${seeker.cornBalance}`);
-                    // highlight the player's seeker
-                    markerRealPos = [16*x,16*y];
-                    updateMarker();
                 }
             });
 
@@ -528,6 +528,9 @@ export default class Demo extends Phaser.Scene {
                 if (i > leaders.length-1) {
                     return;
                 }
+                if (!seeker.player) {
+                    return;
+                }
                 leaders[i].setText(`${i+1} - ${seeker.player.address.slice(0, 16)} - ${seeker.cornBalance} corns`);
             });
 
@@ -535,69 +538,144 @@ export default class Demo extends Phaser.Scene {
         }
 
         // helper to check if a tile is passable
-        const isBlocker = (idx:number):boolean => {
-            return idx !== PASSABLE_GRASS;
+        const isBlocker = (tile: any):boolean => {
+            if (!tile) {
+                return true;
+            }
+            return tile.index !== PASSABLE_GRASS;
         };
+
+        // track pending moves as light on the tiles
+        const pendingMoves:any = [];
+        (window as any).pendingMoves = pendingMoves;
+
+        // get where we _think_ the seeker is, either based on
+        // the last known pending move, or based on the seeker's pos
+        const getExpectedPlayerWorldXY = (): number[] => {
+            if (pendingMoves.length > 0) {
+                const {tile} = pendingMoves[pendingMoves.length-1];
+                return [tile.x*16, tile.y*16];
+            }
+            const seeker = getPlayerSeeker();
+            if (!seeker) {
+                console.log('no seeker loc')
+                return [-1, -1];
+            }
+            return [seeker.sprite.x-8, seeker.sprite.y-8];
+        }
 
         //  dispatch MOVE_SEEKER on WASD movement
         const move = (dir: Direction) => async () => {
-            const id = getPlayerSeeker();
-            if (!id) {
+            if (pendingMoves.length > 10) {
+                console.log('soft limit on pending moves');
+                return;
+            }
+            const seeker = getPlayerSeeker();
+            if (!seeker) {
                 alert("You have no seeker.\n\n Click spawn seeker to start.");
                 return;
             }
-            lastMoveAt = Date.now();
+            // get the position where we think we are based on pending txs
+            const [x,y] = getExpectedPlayerWorldXY();
+            if (x == -1 || y == -1) {
+                console.error('failed to find player position');
+                return;
+            }
+            console.log('pos', x, y);
             // check we don't try and move onto a blocker
-            // optimistically move the cursor - to make it feel like it's done something
             let tile;
             switch (dir) {
                 case Direction.NORTH:
-                    tile = baseLayer.getTileAtWorldXY(marker.x, marker.y+16, true);
-                    if (isBlocker(tile.index)) {
+                    tile = baseLayer.getTileAtWorldXY(x, y+16, true);
+                    if (isBlocker(tile)) {
                         console.log('bumped into a wall');
                         return;
                     }
-                    marker.y += 16;
                     break;
                 case Direction.SOUTH:
-                    tile = baseLayer.getTileAtWorldXY(marker.x, marker.y-16, true);
-                    if (isBlocker(tile.index)) {
+                    tile = baseLayer.getTileAtWorldXY(x, y-16, true);
+                    if (isBlocker(tile)) {
                         console.log('bumped into a wall');
                         return;
                     }
-                    marker.y -= 16;
                     break;
                 case Direction.EAST:
-                    tile = baseLayer.getTileAtWorldXY(marker.x+16, marker.y, true);
-                    if (isBlocker(tile.index)) {
+                    tile = baseLayer.getTileAtWorldXY(x+16, y, true);
+                    if (isBlocker(tile)) {
                         console.log('bumped into a wall');
                         return;
                     }
-                    marker.x += 16;
                     break;
                 case Direction.WEST:
-                    tile = baseLayer.getTileAtWorldXY(marker.x-16, marker.y, true);
-                    if (isBlocker(tile.index)) {
+                    tile = baseLayer.getTileAtWorldXY(x-16, y, true);
+                    if (isBlocker(tile)) {
                         console.log('bumped into a wall');
                         return;
                     }
-                    marker.x -= 16;
                     break;
             }
-            await dispatch("MOVE_SEEKER", id, dir);
+            if (!tile) {
+                return;
+            }
+            // add a light to indicate pending tx
+            const light = scene.lights.addPointLight(tile.x*16+8, tile.y*16+8, 0xffffff, 15, 0.05, 0.07)
+            try {
+                pendingMoves.push({ light, tile });
+                const res = await dispatch("MOVE_SEEKER", seeker.key, dir);
+                const mv = pendingMoves.find((p:any) => p.light == light);
+                if (mv) {
+                    mv.id = res.id;
+                } else {
+                    console.log('failed to add id to light');
+                }
+            } catch(err) {
+                console.error('moveFail', err);
+                light.destroy();
+                const mv = pendingMoves.find((p:any) => p.light == light);
+                if (mv) {
+                    pendingMoves.splice(pendingMoves.indexOf(mv), 1);
+                }
+            }
         }
         scene.input.keyboard.on('keydown-A', move(Direction.WEST));
         scene.input.keyboard.on('keydown-D', move(Direction.EAST));
         scene.input.keyboard.on('keydown-W', move(Direction.SOUTH));
         scene.input.keyboard.on('keydown-S', move(Direction.NORTH));
 
+        const onTxChange = async (tx:any) => {
+            for (let i=0; i<pendingMoves.length; i++) {
+                const {light, tile, id} = pendingMoves[i];
+                if (!id) {
+                    continue;
+                }
+                if (tx.id == id && tx.status != "PENDING") {
+                    for (let j=0; j<i+1; j++) {
+                        pendingMoves[j].light.destroy();
+                    }
+                    pendingMoves.splice(0, i+1);
+                    return;
+                }
+            }
+        }
+
         // subscribe to future state changes
         client.subscribe({
             query: STATE_SUBSCRIPTION,
         }).subscribe(
             (result) => onStateChange(result.data.state),
-            (err) => console.error('subscriptionError', err),
-            () => console.warn('subscriptionClosed')
+            (err) => console.error('stateSubscriptionError', err),
+            () => console.warn('stateSubscriptionClosed')
+        );
+
+
+        // watch for tx belonging to this player
+        client.subscribe({
+            query: TX_SUBSCRIPTION,
+            variables: {owner: ownerAddr},
+        }).subscribe(
+            (result) => onTxChange(result.data.transaction),
+            (err) => console.error('txSubscriptionError', err),
+            () => console.warn('txSubscriptionClosed')
         )
 
         // fetch initial state
