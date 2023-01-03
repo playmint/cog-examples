@@ -531,7 +531,7 @@ export default class Demo extends Phaser.Scene {
                 if (!seeker.player) {
                     return;
                 }
-                leaders[i].setText(`${i+1} - ${seeker.player.address.slice(0, 16)} - ${seeker.cornBalance} corns`);
+                leaders[i].setText(`${i+1} - ${seeker.player.address.slice(0, 8)} - ${seeker.cornBalance} corns`);
             });
 
 
@@ -581,7 +581,6 @@ export default class Demo extends Phaser.Scene {
                 console.error('failed to find player position');
                 return;
             }
-            console.log('pos', x, y);
             // check we don't try and move onto a blocker
             let tile;
             switch (dir) {
@@ -682,7 +681,6 @@ export default class Demo extends Phaser.Scene {
         await client.query({query: STATE_QUERY})
             .then((result) => onStateChange(result.data.game.state))
             .catch((err) => console.error('err', err));
-        updateMarker();
 
     }
 
